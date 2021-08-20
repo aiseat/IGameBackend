@@ -1,0 +1,63 @@
+on: [push, pull_request]
+
+name: compile
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-pc-windows-gnu
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v2
+      - name: Get version
+        id: get_version
+        run: echo "::set-output name=version::$(sed -n '/^version/p' test | sed 's/version = //' | sed 's/\"//g')"
+      - name: Set rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: ${{ matrix.target }}
+          override: true
+      - name: Cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          use-cross: true
+          toolchain: nightly
+          args: --release --target=${{ matrix.target }}
+      - name: Upload windows x64 bin
+        if: ${{ matrix.target == 'x86_64-pc-windows-gnu' }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: target/${{ matrix.target }}/release/igame_backend.exe
+            asset_name: igame_backend-windows-x64.exe
+            tag: ${{ steps.get_version.outputs.version }}
+            overwrite: true
+            prerelease: true
+      - name: Upload linux x64 bin
+        if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: target/${{ matrix.target }}/release/igame_backend
+            asset_name: igame_backend-linux-x64
+            tag: ${{ steps.get_version.outputs.version }}
+            overwrite: true
+            prerelease: true
+      - name: Upload linux arm64 bin
+        if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: target/${{ matrix.target }}/release/igame_backend
+            asset_name: igame_backend-linux-arm64
+            tag: ${{ steps.get_version.outputs.version }}
+            overwrite: true
+            prerelease: true
