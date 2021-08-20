@@ -249,9 +249,9 @@ impl MSGraphClient {
             .user_agent("ISV|rclone.org|rclone/v1.55.1")
             .default_headers(headers)
             .no_proxy()
-            .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(15))
-            .pool_idle_timeout(Duration::from_secs(600))
+            .connect_timeout(Duration::from_secs(config.connect_timeout))
+            .timeout(Duration::from_secs(config.whole_timeout))
+            .pool_idle_timeout(Duration::from_secs(config.pool_idle_timeout))
             .build()
             .unwrap();
 
