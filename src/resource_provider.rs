@@ -45,7 +45,7 @@ impl ResourceProviderShare {
                 }
                 Err(e) => {
                     // 判断是否为资源不存在错误
-                    if e.err_code == 9 {
+                    if e.err_code == 6 {
                         return Err(e);
                     }
                 }
