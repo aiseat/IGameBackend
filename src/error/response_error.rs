@@ -4,7 +4,12 @@ use derive_more::{Display, Error};
 use serde_json::json;
 
 #[derive(Debug, Display, Error)]
-#[display(fmt = "err_code: {}, err_message: {}", err_code, err_message)]
+#[display(
+    fmt = "{{err_code: {}, err_message: {}, internal_message: {}}}",
+    err_code,
+    err_message,
+    internal_message
+)]
 pub struct ResponseError {
     pub err_code: u16,
     pub err_message: String,
@@ -66,6 +71,17 @@ impl ResponseError {
         Self {
             err_code: 6,
             err_message: err_message.unwrap_or("没有找到对应的文件").to_string(),
+            internal_message: internal_message.to_string(),
+            status_code: StatusCode::BAD_REQUEST,
+        }
+    }
+
+    pub fn new_already_done_error(internal_message: &str, err_message: Option<&str>) -> Self {
+        Self {
+            err_code: 7,
+            err_message: err_message
+                .unwrap_or("该操作已经完成，无法再次执行")
+                .to_string(),
             internal_message: internal_message.to_string(),
             status_code: StatusCode::BAD_REQUEST,
         }

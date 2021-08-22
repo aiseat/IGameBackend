@@ -174,8 +174,8 @@ pub async fn post_daily_bonus(
             let now_time_utc = Utc::now();
             let now_time_china = now_time_utc.with_timezone(&china_timezone);
             if last_time_china.day() == now_time_china.day() {
-                return Err(ResponseError::new_input_error(
-                    &format!("用户已签到: {}", user_id), 
+                return Err(ResponseError::new_already_done_error(
+                    &format!("用户已签到, 用户ID: {}", user_id), 
                     Some("本日已签到，无法再次领取奖励")
                 ));
             }

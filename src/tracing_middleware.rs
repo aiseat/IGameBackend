@@ -14,31 +14,27 @@ pub struct CustomRootSpanBuilder;
 
 impl RootSpanBuilder for CustomRootSpanBuilder {
     fn on_request_start(request: &ServiceRequest) -> Span {
+        let connection_info = request.connection_info();
+        let http_route: std::borrow::Cow<'static, str> = request
+            .match_pattern()
+            .map(Into::into)
+            .unwrap_or_else(|| "default".into());
         let user_agent = request
             .headers()
             .get("User-Agent")
             .map(|h| h.to_str().unwrap_or(""))
             .unwrap_or("");
-        let http_route: std::borrow::Cow<'static, str> = request
-            .match_pattern()
-            .map(Into::into)
-            .unwrap_or_else(|| "default".into());
-        let http_method = private::http_method_str(request.method());
-        let connection_info = request.connection_info();
-        let request_id = private::get_request_id(request);
         let span = private::tracing::info_span!(
             "HTTP request",
-            http.method = %http_method,
-            http.route = %http_route,
-            http.flavor = %private::http_flavor(request.version()),
-            http.scheme = %private::http_scheme(connection_info.scheme()),
-            http.host = %connection_info.host(),
-            http.client_ip = %request.connection_info().realip_remote_addr().unwrap_or(""),
-            http.user_agent = %user_agent,
-            http.target = %request.uri().path_and_query().map(|p| p.as_str()).unwrap_or(""),
-            http.status_code = private::tracing::field::Empty,
-            request_id = %request_id,
-            exception.details = private::tracing::field::Empty,
+            id = %private::get_request_id(request),
+            ip = %connection_info.realip_remote_addr().unwrap_or(""),
+            host = %connection_info.host(),
+            method = %private::http_method_str(request.method()),
+            target = %request.uri().path_and_query().map(|p| p.as_str()).unwrap_or(""),
+            route = %http_route,
+            status_code = private::tracing::field::Empty,
+            user_agent = %user_agent,
+            exception = private::tracing::field::Empty,
         );
         std::mem::drop(connection_info);
         span
@@ -50,7 +46,7 @@ impl RootSpanBuilder for CustomRootSpanBuilder {
                 if let Some(error) = response.response().error() {
                     handle_error(span, error)
                 } else {
-                    span.record("http.status_code", &response.response().status().as_u16());
+                    span.record("status_code", &response.response().status().as_u16());
                 }
             }
             Err(error) => handle_error(span, error),
@@ -60,9 +56,9 @@ impl RootSpanBuilder for CustomRootSpanBuilder {
 
 fn handle_error(span: Span, error: &actix_web::Error) {
     let response_error = error.as_response_error();
-    span.record("exception.details", &tracing::field::debug(response_error));
     let status_code = response_error.status_code();
-    span.record("http.status_code", &status_code.as_u16());
+    span.record("status_code", &status_code.as_u16());
+    span.record("exception", &tracing::field::display(response_error));
 }
 
 pub struct TracingLogger<RootSpan: RootSpanBuilder> {
@@ -162,7 +158,7 @@ fn emit_event_on_error<B: 'static>(outcome: &Result<ServiceResponse<B>, actix_we
 fn emit_error_event(response_error: &dyn ResponseError) {
     let status_code = response_error.status_code();
     if status_code.is_client_error() {
-        tracing::info!("解析http请求失败: 客户端错误");
+        tracing::debug!("解析http请求失败: 客户端错误");
     } else {
         tracing::error!("解析http请求失败: 服务器错误");
     }
