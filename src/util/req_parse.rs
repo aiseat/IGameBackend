@@ -13,9 +13,9 @@ pub fn get_access_token(req: &HttpRequest) -> Option<&str> {
 }
 
 pub fn get_user_id(req: &HttpRequest) -> Result<i32, ResponseError> {
-    let access_token = get_access_token(&req).ok_or(ResponseError::new_input_error(
+    let access_token = get_access_token(&req).ok_or(ResponseError::access_token_err(
+        "解析错误",
         "无法从头部获取access_token",
-        Some("无法获取用户凭证"),
     ))?;
     let user_id = parse_access_token(access_token)?.user_id;
     Ok(user_id)

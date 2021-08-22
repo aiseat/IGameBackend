@@ -18,79 +18,92 @@ pub struct ResponseError {
 }
 
 impl ResponseError {
-    pub fn new_parse_error(internal_message: &str, err_message: Option<&str>) -> Self {
+    // 通用错误
+    pub fn input_err(err_message: &str, internal_message: &str) -> Self {
         Self {
             err_code: 1,
-            err_message: err_message
-                .unwrap_or("解析失败，请检查输入是否正确")
-                .to_string(),
+            err_message: format!("输入不正确: {}", err_message),
             internal_message: internal_message.to_string(),
             status_code: StatusCode::BAD_REQUEST,
         }
     }
 
-    pub fn new_input_error(internal_message: &str, err_message: Option<&str>) -> Self {
+    pub fn permission_err(err_message: &str, internal_message: &str) -> Self {
         Self {
             err_code: 2,
-            err_message: err_message.unwrap_or("输入不正确，请重新输入").to_string(),
-            internal_message: internal_message.to_string(),
-            status_code: StatusCode::BAD_REQUEST,
-        }
-    }
-
-    pub fn new_permission_error(internal_message: &str, err_message: Option<&str>) -> Self {
-        Self {
-            err_code: 3,
-            err_message: err_message
-                .unwrap_or("没有对应权限，请检查输入是否正确")
-                .to_string(),
+            err_message: format!("没有相应权限: {}", err_message),
             internal_message: internal_message.to_string(),
             status_code: StatusCode::FORBIDDEN,
         }
     }
 
-    pub fn new_expire_token_error(internal_message: &str, err_message: Option<&str>) -> Self {
+    pub fn access_token_err(err_message: &str, internal_message: &str) -> Self {
         Self {
-            err_code: 4,
-            err_message: err_message.unwrap_or("用户凭证已过期").to_string(),
+            err_code: 3,
+            err_message: format!("获取用户访问凭证失败: {}", err_message),
             internal_message: internal_message.to_string(),
             status_code: StatusCode::UNAUTHORIZED,
         }
     }
 
-    pub fn new_network_error(internal_message: &str, err_message: Option<&str>) -> Self {
+    pub fn refresh_token_err(err_message: &str, internal_message: &str) -> Self {
+        Self {
+            err_code: 4,
+            err_message: format!("获取用户刷新凭证失败: {}", err_message),
+            internal_message: internal_message.to_string(),
+            status_code: StatusCode::UNAUTHORIZED,
+        }
+    }
+
+    pub fn lack_coin_err(err_message: &str, internal_message: &str) -> Self {
         Self {
             err_code: 5,
-            err_message: err_message.unwrap_or("网络连接失败,请稍后重试").to_string(),
+            err_message: format!("无限币不足: {}", err_message),
+            internal_message: internal_message.to_string(),
+            status_code: StatusCode::FORBIDDEN,
+        }
+    }
+
+    pub fn lack_exp_err(err_message: &str, internal_message: &str) -> Self {
+        Self {
+            err_code: 6,
+            err_message: format!("用户等级不足: {}", err_message),
+            internal_message: internal_message.to_string(),
+            status_code: StatusCode::FORBIDDEN,
+        }
+    }
+
+    pub fn resource_not_found_err(err_message: &str, internal_message: &str) -> Self {
+        Self {
+            err_code: 7,
+            err_message: format!("没有找到相应资源: {}", err_message),
+            internal_message: internal_message.to_string(),
+            status_code: StatusCode::BAD_REQUEST,
+        }
+    }
+
+    pub fn already_done_err(err_message: &str, internal_message: &str) -> Self {
+        Self {
+            err_code: 8,
+            err_message: format!("该操作已经执行过了: {}", err_message),
+            internal_message: internal_message.to_string(),
+            status_code: StatusCode::BAD_REQUEST,
+        }
+    }
+
+    pub fn resource_provider_unavailable_err(err_message: &str, internal_message: &str) -> Self {
+        Self {
+            err_code: 9,
+            err_message: format!("后台文件服务器不可用: {}", err_message),
             internal_message: internal_message.to_string(),
             status_code: StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
-    pub fn new_file_not_found_error(internal_message: &str, err_message: Option<&str>) -> Self {
-        Self {
-            err_code: 6,
-            err_message: err_message.unwrap_or("没有找到对应的文件").to_string(),
-            internal_message: internal_message.to_string(),
-            status_code: StatusCode::BAD_REQUEST,
-        }
-    }
-
-    pub fn new_already_done_error(internal_message: &str, err_message: Option<&str>) -> Self {
-        Self {
-            err_code: 7,
-            err_message: err_message
-                .unwrap_or("该操作已经完成，无法再次执行")
-                .to_string(),
-            internal_message: internal_message.to_string(),
-            status_code: StatusCode::BAD_REQUEST,
-        }
-    }
-
-    pub fn new_internal_error(internal_message: &str, err_message: Option<&str>) -> Self {
+    pub fn unexpected_err(err_message: &str, internal_message: &str) -> Self {
         Self {
             err_code: 0,
-            err_message: err_message.unwrap_or("系统内部错误,请稍后重试").to_string(),
+            err_message: format!("未预计的错误: {}", err_message),
             internal_message: internal_message.to_string(),
             status_code: StatusCode::INTERNAL_SERVER_ERROR,
         }

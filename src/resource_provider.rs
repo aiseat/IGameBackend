@@ -45,7 +45,7 @@ impl ResourceProviderShare {
                 }
                 Err(e) => {
                     // 判断是否为资源不存在错误
-                    if e.err_code == 6 {
+                    if e.err_code == 7 {
                         return Err(e);
                     }
                 }
@@ -123,9 +123,9 @@ impl ResourceProvider {
                 .await;
             Ok((result, available_client_index))
         } else {
-            Err(ResponseError::new_internal_error(
+            Err(ResponseError::resource_provider_unavailable_err(
+                "获取下载链接失败，请稍后重试",
                 &format!("所有在{}组内的提供者均不可用", client_group),
-                Some("服务暂不可用，请稍后再试"),
             ))
         }
     }
@@ -329,9 +329,11 @@ impl MSGraphClient {
         }
 
         // 重试三次发送请求
-        let mut response: Result<reqwest::Response, ResponseError> = Err(
-            ResponseError::new_internal_error("尝试发送get_download_url请求失败", None),
-        );
+        let mut response: Result<reqwest::Response, ResponseError> =
+            Err(ResponseError::resource_provider_unavailable_err(
+                "获取下载链接失败，请稍后重试",
+                &format!("[提供者{}]尝试发送get_download_url请求失败", self.config.id),
+            ));
         for i in 0..3 {
             let result = self
                 .request_client
@@ -364,24 +366,24 @@ impl MSGraphClient {
 
         if !response.status().is_success() {
             if response.status() == StatusCode::BAD_REQUEST {
-                return Err(ResponseError::new_file_not_found_error(
+                return Err(ResponseError::resource_not_found_err(
+                    "该资源不存在",
                     &format!(
                         "[提供者{}]没有找到文件, 文件路径：{}, 发送get_download_url的响应状态码：400, 内容: {}",
                         self.config.id,
                         resource_path,
                         response.text().await.unwrap(),
                     ),
-                    None,
                 ));
             } else {
-                return Err(ResponseError::new_internal_error(
+                return Err(ResponseError::resource_provider_unavailable_err(
+                    "获取下载链接失败，请稍后重试",
                     &format!(
                         "[提供者{}]发送get_download_url的响应状态码不正确: {}, 内容: {}",
                         self.config.id,
                         response.status().as_str(),
                         response.text().await.unwrap(),
                     ),
-                    Some("后端文件服务器响应失败，请稍后重试"),
                 ));
             }
         };
@@ -428,14 +430,14 @@ impl MSGraphClient {
             })?;
 
         if !response.status().is_success() {
-            return Err(ResponseError::new_internal_error(
+            return Err(ResponseError::resource_provider_unavailable_err(
+                "文件服务器获取refresh_token失败",
                 &format!(
-                    "[提供者{}]获取refresh_token响应状态码不正确: {}, 内容: {}",
+                    "[提供者{}]获取refresh_token响应状态码不正确， 状态码：{}, 内容: {}",
                     self.config.id,
                     response.status().as_str(),
                     response.text().await.unwrap(),
                 ),
-                None,
             ));
         };
 

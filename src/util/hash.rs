@@ -27,15 +27,15 @@ pub fn compare_password(
     salted_password: &Vec<u8>,
 ) -> Result<bool, ResponseError> {
     if salted_password.len() != 64 {
-        return Err(ResponseError::new_internal_error(
-            "The length of salted_password should equal 64",
-            None,
+        return Err(ResponseError::unexpected_err(
+            "比较密码失败",
+            "salted_password的长度应该等于64比特",
         ));
     }
     let (salt, right) = salted_password.split_at(32);
     let hashed_password: [u8; 32] = right
         .try_into()
-        .map_err(|e| ResponseError::new_internal_error(&format!("{}", e), None))?;
+        .map_err(|e| ResponseError::unexpected_err("比较密码失败", &format!("{}", e)))?;
     let hash2 = Hash::from(hashed_password);
 
     let mut hasher = Hasher::new();

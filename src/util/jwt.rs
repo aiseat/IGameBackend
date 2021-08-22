@@ -59,7 +59,7 @@ pub fn parse_access_token(jwt: &str) -> Result<AccessTokenClaims, ResponseError>
     )
     .map_err(|e| match e.kind() {
         &ErrorKind::ExpiredSignature => {
-            ResponseError::new_expire_token_error("access_token已过期", Some("用户访问凭证已过期"))
+            ResponseError::access_token_err("用户访问凭证已过期", "access_token已过期")
         }
         _ => e.into(),
     })?;
@@ -74,7 +74,7 @@ pub fn parse_refresh_token(jwt: &str) -> Result<RefreshTokenClaims, ResponseErro
     )
     .map_err(|e| match e.kind() {
         &ErrorKind::ExpiredSignature => {
-            ResponseError::new_expire_token_error("refresh_token已过期", Some("用户刷新凭证已过期"))
+            ResponseError::refresh_token_err("用户刷新凭证已过期", "refresh_token已过期")
         }
         _ => e.into(),
     })?;

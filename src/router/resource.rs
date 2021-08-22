@@ -63,9 +63,9 @@ pub async fn get_resource(
                 2 => game_depend_app_ids.push(depend_app_ids[index]),
                 3 => mod_depend_app_ids.push(depend_app_ids[index]),
                 _ => {
-                    return Err(ResponseError::new_internal_error(
+                    return Err(ResponseError::unexpected_err(
+                        "数据库内部错误",
                         "depend_id的type不满足约定",
-                        None,
                     ))
                 }
             };
@@ -178,13 +178,13 @@ pub async fn get_resource_url(
         let resource_paths: Vec<&str> = r1.get("paths");
         let resource_path = resource_paths[resource_type.to_index()];
         if resource_path == "" {
-            return Err(ResponseError::new_input_error(
+            return Err(ResponseError::input_err(
+                "该资源不存在",
                 &format!(
                     "资源id：{}的路径{}不存在",
                     resource_id,
                     resource_type.to_index()
                 ),
-                Some("该资源不存在"),
             ));
         };
         let allowed_exp: i32 = r1.get("allowed_exp");
@@ -194,22 +194,21 @@ pub async fn get_resource_url(
         let user_exp: i32 = r2.get("exp");
 
         if user_exp < allowed_exp {
-            return Err(ResponseError::new_permission_error(
+            return Err(ResponseError::lack_exp_err(
+                "无法获取资源链接",
                 &format!(
                     "请求资源id:{}, type:{}, client_group: {}",
                     resource_id, resource_type, client_group
                 ),
-                Some("用户等级不足，无法获取链接"),
             ));
         }
-
         if user_coin < cost {
-            return Err(ResponseError::new_permission_error(
+            return Err(ResponseError::lack_coin_err(
+                "无法获取资源链接",
                 &format!(
                     "请求资源id:{}, type:{}, client_group: {}",
                     resource_id, resource_type, client_group
                 ),
-                Some("用户无限币不足，无法获取链接"),
             ));
         }
 
@@ -243,13 +242,13 @@ pub async fn get_resource_url(
         let resource_paths: Vec<&str> = r1.get("paths");
         let resource_path = resource_paths[resource_type.to_index()];
         if resource_path == "" {
-            return Err(ResponseError::new_input_error(
+            return Err(ResponseError::input_err(
+                "该资源不存在",
                 &format!(
                     "资源id：{}的路径{}不存在",
                     resource_id,
                     resource_type.to_index()
                 ),
-                Some("该资源不存在"),
             ));
         };
         let allowed_exp: i32 = r1.get("allowed_exp");
@@ -257,12 +256,12 @@ pub async fn get_resource_url(
 
         let cost = costs[client_group.to_index()];
         if allowed_exp != 0 || cost != 0 {
-            return Err(ResponseError::new_permission_error(
+            return Err(ResponseError::permission_err(
+                "只有登陆用户有权下载本资源",
                 &format!(
                     "请求资源id:{}, type:{}, client_group: {}",
                     resource_id, resource_type, client_group
                 ),
-                Some("只有登陆用户有权下载本资源"),
             ));
         }
 

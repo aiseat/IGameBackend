@@ -33,9 +33,9 @@ pub async fn get_user(
     let r1 = client.query_one(&s1, &[&user_id]).await?;
     let has_permission: bool = r1.get(0);
     if !has_permission {
-        return Err(ResponseError::new_permission_error(
-            "No corresponding permissions",
-            Some("没有对应权限"),
+        return Err(ResponseError::permission_err(
+            "没有获取用户的权限",
+            &format!("没有{}权限, 用户ID: {}", Permission::GetUser.to_string(), user_id),
         ));
     }
 
@@ -68,7 +68,7 @@ pub async fn post_user(
 
     let (s1, s2, s3, s4) = try_join4(
         client.prepare_typed_cached(
-            &format!("SELECT bool_or({}) FROM igame.role WHERE id IN (SELECT role_id FROM igame.user_role WEHRE user_id = $1)", Permission::GetUser.to_string()),
+            &format!("SELECT bool_or({}) FROM igame.role WHERE id IN (SELECT role_id FROM igame.user_role WEHRE user_id = $1)", Permission::CreateUser.to_string()),
             &[DBType::INT4]),
         client.prepare_typed_cached(
             "SELECT EXISTS(SELECT 1 FROM common.user WHERE email = $1)",
@@ -85,9 +85,9 @@ pub async fn post_user(
     let r1 = client.query_one(&s1, &[&user_id]).await?;
     let has_permission: bool = r1.get(0);
     if !has_permission {
-        return Err(ResponseError::new_permission_error(
-            "No corresponding permissions",
-            Some("没有对应权限"),
+        return Err(ResponseError::permission_err(
+            "没有创建用户的权限",
+            &format!("没有{}权限, 用户ID: {}", Permission::CreateUser.to_string(), user_id),
         ));
     }
 
@@ -95,9 +95,9 @@ pub async fn post_user(
     let r2 = client.query_one(&s2, &[&user_create_input.email]).await?;
     let exist = r2.get(0);
     if exist {
-        return Err(ResponseError::new_input_error(
-            "Email addr is already exist",
-            Some("邮箱地址已注册，请使用其他邮箱"),
+        return Err(ResponseError::input_err(
+            "邮箱地址已注册，请使用其他邮箱",
+            "邮箱地址早已存在",
         ));
     }
 
@@ -163,7 +163,7 @@ pub async fn post_daily_bonus(
     ).await?;
 
 
-    // 获取签到累计值
+    // 获取累积签到次数
     let count: i32;
     match client.query_one(&s1, &[&user_id]).await {
         Ok(r1) => {
@@ -173,14 +173,17 @@ pub async fn post_daily_bonus(
             let last_time_china = last_time_utc.with_timezone(&china_timezone);
             let now_time_utc = Utc::now();
             let now_time_china = now_time_utc.with_timezone(&china_timezone);
+            // 最近签到日期是今天
             if last_time_china.day() == now_time_china.day() {
-                return Err(ResponseError::new_already_done_error(
+                return Err(ResponseError::already_done_err(
+                    "本日已签到，无法再次领取奖励",
                     &format!("用户已签到, 用户ID: {}", user_id), 
-                    Some("本日已签到，无法再次领取奖励")
                 ));
             }
+            // 最近签到日期是昨天
             if last_time_china.day() == (now_time_china - Duration::days(1)).day() {
                 count = count_tmp + 1;
+            // 其他情况
             } else {
                 count = 1;
             }
@@ -197,26 +200,27 @@ pub async fn post_daily_bonus(
 
     // 计算本次签到获取的coin与exp
     let added_coin: i32;
-    if count > 16 {
-        added_coin = 20;
+    if count > 30 {
+        added_coin = 40;
     } else {
-        added_coin = 4 + count;
+        added_coin = 9 + count;
     }
-    let added_exp = 5;
+    let added_exp = 10;
 
     // 启用事务来更新签到后的用户信息，以及插入新的签到行
     let transaction = client.transaction().await?;
-    let (r1, r2) = try_join(
+    let (r2, r3) = try_join(
         transaction.query_one(&s2, &[&user_id, &count]), 
         transaction.query_one(&s3, &[&added_coin, &added_exp, &user_id])
     ).await?;
     transaction.commit().await?;
-    let daily_bonus_id: i32 = r1.get("id");
-    let total_coin: i32 = r2.get("coin");
-    let total_exp: i32 = r2.get("exp");
+    let id: i32 = r2.get("id");
+    let total_coin: i32 = r3.get("coin");
+    let total_exp: i32 = r3.get("exp");
 
     Ok(HttpResponse::Ok().json(json!({
-        "daily_bonus_id": daily_bonus_id,
+        "id": id,
+        "count": count,
         "added_coin": added_coin,
         "added_exp": added_exp,
         "total_coin": total_coin,

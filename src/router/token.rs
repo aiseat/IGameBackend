@@ -33,19 +33,16 @@ pub async fn post_login(
         .query_one(&s1, &[&user_login_input.email])
         .await
         .map_err(|e| match is_db_zero_line_error(&e) {
-            true => ResponseError::new_input_error(
-                "Wrong email addr",
-                Some("邮箱或密码不正确，请重新输入"),
-            ),
+            true => ResponseError::input_err("邮箱或密码不正确，请重新输入", "错误的邮箱地址"),
             false => ResponseError::from(e),
         })?;
     let user_id: i32 = r1.get("id");
     let password: Vec<u8> = r1.get("password");
     let same = hash::compare_password(&user_login_input.password, &password)?;
     if !same {
-        return Err(ResponseError::new_input_error(
-            "Wrong password",
-            Some("邮箱或密码不正确，请重新输入"),
+        return Err(ResponseError::input_err(
+            "邮箱或密码不正确，请重新输入",
+            "错误的密码",
         ));
     }
 
@@ -96,18 +93,34 @@ pub async fn post_register(
                 &user_register_input.email,
             ],
         )
-        .await?;
+        .await
+        .map_err(|e| match is_db_zero_line_error(&e) {
+            true => ResponseError::input_err(
+                "无法验证邮箱，请尝试重新发送邮件",
+                "该邮箱没有任何验证记录",
+            ),
+            false => ResponseError::from(e),
+        })?;
     let email_id: i32 = r1.get("id");
     let used: bool = r1.get("used");
     let code: &str = r1.get("code");
     let created_at: SystemTime = r1.get("created_at");
-    if used == true
-        || code != user_register_input.verify_code
-        || created_at < SystemTime::now() - Duration::from_secs(2 * 60 * 60)
-    {
-        return Err(ResponseError::new_input_error(
-            "Fail to verify email",
-            Some("无法验证邮箱，请检查验证码是否正确"),
+    if used == true {
+        return Err(ResponseError::input_err(
+            "无法验证邮箱，请尝试重新发送邮件",
+            "该验证记录已被使用",
+        ));
+    }
+    if code != user_register_input.verify_code {
+        return Err(ResponseError::input_err(
+            "无法验证邮箱，请检查验证码是否正确",
+            "验证码不匹配",
+        ));
+    }
+    if created_at < SystemTime::now() - Duration::from_secs(2 * 60 * 60) {
+        return Err(ResponseError::input_err(
+            "无法验证邮箱，请尝试重新发送邮件",
+            "验证记录已过期",
         ));
     }
 
@@ -115,9 +128,9 @@ pub async fn post_register(
     let r2 = client.query_one(&s2, &[&user_register_input.email]).await?;
     let exist = r2.get(0);
     if exist {
-        return Err(ResponseError::new_input_error(
-            "Email addr is already exist",
-            Some("邮箱地址已注册，请使用其他邮箱"),
+        return Err(ResponseError::input_err(
+            "邮箱地址已注册，请使用其他邮箱",
+            "邮箱地址早已存在",
         ));
     }
 
@@ -166,18 +179,15 @@ pub async fn post_new_token(
         .query_one(&s1, &[&claims.user_id])
         .await
         .map_err(|e| match is_db_zero_line_error(&e) {
-            true => ResponseError::new_input_error(
-                "User id is not exist",
-                Some("用户ID不存在，请重新登陆"),
-            ),
+            true => ResponseError::input_err("用户不存在，请重新登陆", "找不到用户ID对应记录"),
             false => ResponseError::from(e),
         })?;
     let password: Vec<u8> = r1.get("password");
     let same = claims.password == hex::encode(password);
     if !same {
-        return Err(ResponseError::new_input_error(
-            "Wrong password",
-            Some("密码不一致，请重新登陆"),
+        return Err(ResponseError::input_err(
+            "密码已更改，请重新登陆",
+            "用户密码不匹配",
         ));
     }
 
@@ -213,18 +223,34 @@ pub async fn post_reset_password(
                 &reset_password_input.email,
             ],
         )
-        .await?;
+        .await
+        .map_err(|e| match is_db_zero_line_error(&e) {
+            true => ResponseError::input_err(
+                "无法验证邮箱，请尝试重新发送邮件",
+                "该邮箱没有任何验证记录",
+            ),
+            false => ResponseError::from(e),
+        })?;
     let email_id: i32 = r1.get("id");
     let used: bool = r1.get("used");
     let code: &str = r1.get("code");
     let created_at: SystemTime = r1.get("created_at");
-    if used == true
-        || code != reset_password_input.verify_code
-        || created_at < SystemTime::now() - Duration::from_secs(2 * 60 * 60)
-    {
-        return Err(ResponseError::new_input_error(
-            "Fail to verify email",
-            Some("无法验证邮箱，请检查验证码是否正确"),
+    if used == true {
+        return Err(ResponseError::input_err(
+            "无法验证邮箱，请尝试重新发送邮件",
+            "该验证记录已被使用",
+        ));
+    }
+    if code != reset_password_input.verify_code {
+        return Err(ResponseError::input_err(
+            "无法验证邮箱，请检查验证码是否正确",
+            "验证码不匹配",
+        ));
+    }
+    if created_at < SystemTime::now() - Duration::from_secs(2 * 60 * 60) {
+        return Err(ResponseError::input_err(
+            "无法验证邮箱，请尝试重新发送邮件",
+            "验证记录已过期",
         ));
     }
 

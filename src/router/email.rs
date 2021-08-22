@@ -40,17 +40,17 @@ pub async fn post_send_verify_email(
     match email_type {
         EmailType::UserRegister => {
             if exist {
-                return Err(ResponseError::new_input_error(
-                    "common.user的email字段已存在",
-                    Some("邮箱地址已注册，请使用其他邮箱"),
+                return Err(ResponseError::input_err(
+                    "邮箱地址已注册，请使用其他邮箱",
+                    "common.user表内的email字段已存在",
                 ));
             }
         }
         EmailType::PasswordReset => {
             if !exist {
-                return Err(ResponseError::new_input_error(
-                    "common.user的email字段不存在",
-                    Some("该邮箱不存在，请检查是否填写正确"),
+                return Err(ResponseError::input_err(
+                    "该邮箱不存在，请检查是否填写正确",
+                    "common.user表内的email字段不存在",
                 ));
             }
         }
@@ -102,9 +102,9 @@ pub async fn post_send_email(
     let r1 = client.query_one(&s1, &[&user_id]).await?;
     let has_permission: bool = r1.get(0);
     if !has_permission {
-        return Err(ResponseError::new_permission_error(
-            "用户没有对应权限",
-            None,
+        return Err(ResponseError::permission_err(
+            "发送email失败",
+            &format!("尝试发送email失败，用户没有对应权限，用户ID: {}", user_id),
         ));
     }
 
