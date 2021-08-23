@@ -61,7 +61,10 @@ pub fn parse_access_token(jwt: &str) -> Result<AccessTokenClaims, ResponseError>
         &ErrorKind::ExpiredSignature => {
             ResponseError::access_token_err("用户访问凭证已过期", "access_token已过期")
         }
-        _ => e.into(),
+        _ => ResponseError::access_token_err(
+            "解析用户访问凭证失败",
+            &format!("解码access_token错误，详细信息：{}", e),
+        ),
     })?;
     Ok(token.claims)
 }
@@ -76,7 +79,10 @@ pub fn parse_refresh_token(jwt: &str) -> Result<RefreshTokenClaims, ResponseErro
         &ErrorKind::ExpiredSignature => {
             ResponseError::refresh_token_err("用户刷新凭证已过期", "refresh_token已过期")
         }
-        _ => e.into(),
+        _ => ResponseError::access_token_err(
+            "解析用户刷新凭证失败",
+            &format!("解码refresh_token错误，详细信息：{}", e),
+        ),
     })?;
     Ok(token.claims)
 }
