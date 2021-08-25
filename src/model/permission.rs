@@ -11,17 +11,21 @@ pub enum Permission {
     SendEmail,
     #[display(fmt = "create_notification")]
     CreateNotification,
+    #[display(fmt = "free_download")]
+    FreeDownload,
+    #[display(fmt = "ignore_exp")]
+    IgnoreExp,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy)]
-pub enum Role {
+pub enum RoleID {
     #[serde(rename = "admin")]
     Admin = 1,
     #[serde(rename = "user")]
     User,
 }
 
-impl Role {
+impl RoleID {
     pub fn to_i32(&self) -> i32 {
         *self as i32
     }

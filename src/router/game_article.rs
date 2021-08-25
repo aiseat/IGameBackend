@@ -1,6 +1,6 @@
-use actix_web::{get, web, HttpResponse};
+use actix_web::{get, web, HttpRequest, HttpResponse};
 use deadpool_postgres::{Client, Pool};
-use futures::future::try_join;
+use futures::future::{try_join, try_join4};
 use serde_json::json;
 
 use crate::db::Type as DBType;
@@ -10,9 +10,11 @@ use crate::model::{
         GetGameArticleCoverOutput, GetGameArticleCoverOutputItem, GetGameArticleCoverQuery,
         GetGameArticleOutput, GetGameArticlePath,
     },
+    permission::Permission,
     resource::ResourceSimple,
     tag::Tag,
 };
+use crate::util::req_parse::{get_access_token, get_user_id};
 
 // 获取游戏文章的封面
 #[get("/game/covers")]
@@ -89,11 +91,12 @@ pub async fn get_game_article_size(
 // 获取游戏文章的内容
 #[get("/game/article/{id}")]
 pub async fn get_game_article(
+    req: HttpRequest,
     db_pool: web::Data<Pool>,
     path: web::Path<GetGameArticlePath>,
 ) -> Result<HttpResponse, ResponseError> {
     let client: Client = db_pool.get().await?;
-    let (s1, s2) = try_join(
+    let (s1, s2, s3, s4) = try_join4(
         client.prepare_typed_cached(
             "WITH t AS (
                 SELECT a.id, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values, a.app_id, a.title, a.description, a.content, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.updated_at
@@ -112,14 +115,58 @@ pub async fn get_game_article(
         client.prepare_typed_cached(
             "UPDATE igame.game_article SET view = view + 1 WHERE id = $1 RETURNING view",
             &[DBType::INT4]
-        )
+        ),
+        client.prepare_typed_cached(
+            "SELECT exp FROM common.user WHERE id = $1",
+            &[DBType::INT4],
+        ),
+        client.prepare_typed_cached(
+            &format!(
+                "SELECT bool_or({}) as ignore_exp
+                FROM igame.role 
+                WHERE id IN (
+                    SELECT role_id 
+                    FROM igame.user_role 
+                    WHERE user_id = $1
+                    AND (expire_at IS NULL OR (expire_at IS NOT NULL AND expire_at > now()))
+                )",
+                Permission::IgnoreExp.to_string()
+            ),
+            &[DBType::INT4],
+        ),
     ).await?;
 
-    let (r1, r2) = try_join(
-        client.query_one(&s1, &[&path.id]),
-        client.query_one(&s2, &[&path.id]),
-    )
-    .await?;
+    let r1 = client.query_one(&s1, &[&path.id]).await?;
+
+    let article_id: i32 = r1.get("id");
+    let allowed_exp: i32 = r1.get("allowed_exp");
+    let is_login = get_access_token(&req).is_some();
+
+    if allowed_exp > 0 {
+        if !is_login {
+            return Err(ResponseError::permission_err(
+                "只有登陆用户有权浏览本文章",
+                &format!("文章ID:{}, 文章类型: game", article_id),
+            ));
+        } else {
+            let user_id = get_user_id(&req)?;
+            let (r3, r4) = try_join(
+                client.query_one(&s3, &[&user_id]),
+                client.query_one(&s4, &[&user_id]),
+            )
+            .await?;
+            let exp: i32 = r3.get("exp");
+            let can_ignore_exp: bool = r4.get("ignore_exp");
+            if !can_ignore_exp && exp < allowed_exp {
+                return Err(ResponseError::lack_exp_err(
+                    "无法浏览本文章",
+                    &format!("文章ID:{}, 文章类型: game", article_id),
+                ));
+            }
+        }
+    }
+
+    let r2 = client.query_one(&s2, &[&path.id]).await?;
 
     let mut tags: Vec<Tag> = Vec::new();
     let tag_ids: Vec<i32> = r1.get("tag_ids");
@@ -159,7 +206,7 @@ pub async fn get_game_article(
         view: r2.get("view"),
         subscription: r1.get("subscription"),
         downloaded: downloaded,
-        allowed_exp: r1.get("allowed_exp"),
+        allowed_exp: allowed_exp,
         horizontal_image: r1.get("horizontal_image"),
         content_images: r1.get("content_images"),
         content_videos: r1.get("content_videos"),

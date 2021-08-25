@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime};
 use crate::db::Type as DBType;
 use crate::error::{is_db_zero_line_error, ResponseError};
 use crate::model::token::{NewTokenInput, ResetPasswordInput, UserLoginInput, UserRegisterInput};
-use crate::model::{email::EmailType, permission::Role};
+use crate::model::{email::EmailType, permission::RoleID};
 use crate::util::{hash, jwt};
 
 #[post("/login")]
@@ -20,11 +20,15 @@ pub async fn post_login(
     //准备语句
     let (s1, s2) = try_join(
         client.prepare_typed_cached(
-            "SELECT id, password FROM common.user WHERE email = $1",
+            "SELECT id, password
+            FROM common.user
+            WHERE email = $1",
             &[DBType::TEXT],
         ),
         client.prepare_typed_cached(
-            "UPDATE common.user SET login_at = $1 WHERE id = $2",
+            "UPDATE common.user
+            SET login_at = $1
+            WHERE id = $2",
             &[DBType::TIMESTAMPTZ, DBType::INT4],
         ),
     )
@@ -71,11 +75,17 @@ pub async fn post_register(
     //准备语句
     let (s1, s2, s3, s4) = futures::future::try_join4(
         client.prepare_typed_cached(
-            "SELECT id, used, code, created_at FROM common.verification_email WHERE type = $1 AND addr = $2 ORDER BY created_at DESC LIMIT 1",
-            &[DBType::TEXT, DBType::TEXT]),
+            "SELECT id, used, code, created_at
+            FROM common.verification_email
+            WHERE type = $1 AND addr = $2
+            ORDER BY created_at DESC
+            LIMIT 1",
+            &[DBType::TEXT, DBType::TEXT],
+        ),
         client.prepare_typed_cached(
             "SELECT EXISTS(SELECT 1 FROM common.user WHERE email = $1)",
-            &[DBType::TEXT]),
+            &[DBType::TEXT],
+        ),
         client.prepare_typed_cached(
             "WITH
             u AS (
@@ -85,12 +95,18 @@ pub async fn post_register(
                 INSERT INTO igame.user_notification(user_id, notification_id)
                 SELECT (SELECT id FROM u), id FROM igame.notification
                 WHERE global = true)
-            INSERT INTO igame.user_role(user_id, role_id) SELECT id, $4 FROM u RETURNING user_id",
-            &[DBType::TEXT, DBType::TEXT, DBType::BYTEA, DBType::INT4]),
+            INSERT INTO igame.user_role(user_id, role_id) 
+            SELECT id, $4 FROM u RETURNING user_id",
+            &[DBType::TEXT, DBType::TEXT, DBType::BYTEA, DBType::INT4],
+        ),
         client.prepare_typed_cached(
-            "UPDATE common.verification_email SET used = TRUE WHERE id = $1",
-            &[DBType::INT4]),
-    ).await?;
+            "UPDATE common.verification_email
+            SET used = TRUE
+            WHERE id = $1",
+            &[DBType::INT4],
+        ),
+    )
+    .await?;
 
     let (r1, r2) = try_join(
         //检查verify_code是否合法
@@ -151,7 +167,7 @@ pub async fn post_register(
                 &user_register_input.email,
                 &user_register_input.nick_name,
                 &hased_password,
-                &Role::User.to_i32(),
+                &RoleID::User.to_i32(),
             ],
         ),
         //设置verify_code为已使用
@@ -217,10 +233,29 @@ pub async fn post_reset_password(
 
     //准备语句
     let (s1, s2, s3) = futures::future::try_join3(
-        client.prepare_typed_cached("SELECT id, used, code, created_at FROM common.verification_email WHERE type = $1 AND addr = $2 ORDER BY created_at DESC LIMIT 1", &[DBType::TEXT, DBType::TEXT]),
-        client.prepare_typed_cached("UPDATE common.user SET password = $1 WHERE email = $2 RETURNING id",&[DBType::BYTEA, DBType::TEXT]),
-        client.prepare_typed_cached("UPDATE common.verification_email SET used = TRUE WHERE id = $1",&[DBType::INT4])
-    ).await?;
+        client.prepare_typed_cached(
+            "SELECT id, used, code, created_at
+            FROM common.verification_email
+            WHERE type = $1 AND addr = $2
+            ORDER BY created_at DESC
+            LIMIT 1",
+            &[DBType::TEXT, DBType::TEXT],
+        ),
+        client.prepare_typed_cached(
+            "UPDATE common.user
+            SET password = $1
+            WHERE email = $2
+            RETURNING id",
+            &[DBType::BYTEA, DBType::TEXT],
+        ),
+        client.prepare_typed_cached(
+            "UPDATE common.verification_email
+            SET used = TRUE
+            WHERE id = $1",
+            &[DBType::INT4],
+        ),
+    )
+    .await?;
 
     //检查verify_code是否合法
     let r1 = client

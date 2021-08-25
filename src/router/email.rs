@@ -91,7 +91,14 @@ pub async fn post_send_email(
     let s1 = client
         .prepare_typed_cached(
             &format!(
-                "SELECT bool_or({}) FROM igame.role WHERE id IN (SELECT role_id FROM igame.user_role WHERE user_id = $1)",
+                "SELECT bool_or({}) 
+                FROM igame.role 
+                WHERE id IN (
+                    SELECT role_id 
+                    FROM igame.user_role 
+                    WHERE user_id = $1
+                    AND (expire_at IS NULL OR (expire_at IS NOT NULL AND expire_at > now()))
+                )",
                 Permission::SendEmail.to_string()
             ),
             &[DBType::INT4],

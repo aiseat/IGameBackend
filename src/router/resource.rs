@@ -1,14 +1,17 @@
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use deadpool_postgres::{Client, Pool};
-use futures::future::{try_join, try_join3, try_join5};
+use futures::future::{try_join, try_join3, try_join_all};
 use serde_json::json;
 use std::collections::HashMap;
 
 use crate::db::Type as DBType;
 use crate::error::ResponseError;
-use crate::model::resource::{
-    DependResource, DependResourceWithoutArticleId, GetResourceOutput, GetResourcePath,
-    GetResourceUrlPath, GetResourceUrlQuery,
+use crate::model::{
+    permission::Permission,
+    resource::{
+        DependResource, DependResourceWithoutArticleId, GetResourceOutput, GetResourcePath,
+        GetResourceUrlPath, GetResourceUrlQuery,
+    },
 };
 use crate::resource_provider::ResourceProviderShare;
 use crate::util::{jwt::parse_access_token, req_parse::get_access_token};
@@ -142,7 +145,7 @@ pub async fn get_resource_url(
     let resource_type = &query.r#type;
     let client_group = &query.group;
 
-    let (s1, s2, s3, s4, s5) = try_join5(
+    let vec_s = try_join_all(vec![
         client.prepare_typed_cached(
             &format!(
                 "SELECT allowed_exp, paths, {}_costs AS costs FROM common.resource WHERE id = $1",
@@ -166,17 +169,31 @@ pub async fn get_resource_url(
             "UPDATE common.resource SET downloaded = downloaded + 1 WHERE id = $1 RETURNING downloaded",
             &[DBType::INT4],
         ),
-    )
-    .await?;
+        client.prepare_typed_cached(
+            &format!(
+                "SELECT bool_or({}) as free_download, bool_or({}) as ignore_exp
+                FROM igame.role 
+                WHERE id IN (
+                    SELECT role_id 
+                    FROM igame.user_role 
+                    WHERE user_id = $1
+                    AND (expire_at IS NULL OR (expire_at IS NOT NULL AND expire_at > now()))
+                )",
+                Permission::FreeDownload.to_string(), Permission::IgnoreExp.to_string()
+            ),
+            &[DBType::INT4],
+        ),
+    ]).await?;
 
     let download_url: String;
     let downloaded: i32;
     if let Some(access_token) = get_access_token(&req) {
         // 登陆用户
         let user_id = parse_access_token(&access_token)?.user_id;
-        let (r1, r2) = try_join(
-            client.query_one(&s1, &[resource_id]),
-            client.query_one(&s2, &[&user_id]),
+        let (r1, r2, r6) = try_join3(
+            client.query_one(&vec_s[0], &[resource_id]),
+            client.query_one(&vec_s[1], &[&user_id]),
+            client.query_one(&vec_s[5], &[&user_id]),
         )
         .await?;
         let resource_paths: Vec<&str> = r1.get("paths");
@@ -196,8 +213,10 @@ pub async fn get_resource_url(
         let cost = costs[client_group.to_index()];
         let user_coin: i32 = r2.get("coin");
         let user_exp: i32 = r2.get("exp");
+        let can_free_download: bool = r6.get("free_download");
+        let can_ignore_exp: bool = r6.get("ignore_exp");
 
-        if user_exp < allowed_exp {
+        if !can_ignore_exp && user_exp < allowed_exp {
             return Err(ResponseError::lack_exp_err(
                 "无法获取资源链接",
                 &format!(
@@ -206,7 +225,7 @@ pub async fn get_resource_url(
                 ),
             ));
         }
-        if user_coin < cost {
+        if !can_free_download && user_coin < cost {
             return Err(ResponseError::lack_coin_err(
                 "无法获取资源链接",
                 &format!(
@@ -216,8 +235,8 @@ pub async fn get_resource_url(
             ));
         }
 
-        if cost > 0 {
-            // 如果费用大于0，进行交易
+        if !can_free_download && cost > 0 {
+            // 如果不能免费下载且资源费用大于0，进行交易
             let trade_id: i32;
             let remain_coin: i32;
             let transaction: deadpool_postgres::Transaction;
@@ -227,12 +246,12 @@ pub async fn get_resource_url(
             ) = try_join(
                 resource_provider.get_download_url(resource_path, client_group),
                 async {
-                    let trade_type: i16 = 0;
+                    let trade_type: i16 = 1;
                     let transaction = client.transaction().await?;
                     let (r3, r4, r5) = try_join3(
-                        transaction.query_one(&s3, &[&user_id, &trade_type, &cost]),
-                        transaction.query_one(&s4, &[&cost, &user_id]),
-                        transaction.query_one(&s5, &[resource_id]),
+                        transaction.query_one(&vec_s[2], &[&user_id, &trade_type, &cost]),
+                        transaction.query_one(&vec_s[3], &[&cost, &user_id]),
+                        transaction.query_one(&vec_s[4], &[resource_id]),
                     )
                     .await?;
                     return Ok((
@@ -246,26 +265,30 @@ pub async fn get_resource_url(
             .await?;
             transaction.commit().await?;
 
-            return Ok(HttpResponse::Ok().json(
-                json!({ "download_url": download_url, "trade_id": trade_id, "remain_coin": remain_coin, "downloaded": downloaded }),
-            ));
+            return Ok(HttpResponse::Ok().json(json!({
+                "download_url": download_url,
+                "trade_id": trade_id,
+                "remain_coin": remain_coin,
+                "downloaded": downloaded
+            })));
         } else {
             // 费用为0，直接下载
             (download_url, downloaded) = try_join(
                 resource_provider.get_download_url(resource_path, client_group),
                 async {
-                    let r5 = client.query_one(&s5, &[resource_id]).await?;
+                    let r5 = client.query_one(&vec_s[4], &[resource_id]).await?;
                     return Ok(r5.get("downloaded"));
                 },
             )
             .await?;
 
-            return Ok(HttpResponse::Ok()
-                .json(json!({ "download_url": download_url, "downloaded": downloaded })));
+            return Ok(HttpResponse::Ok().json(json!({ 
+                "download_url": download_url, 
+                "downloaded": downloaded })));
         }
     } else {
         // 游客或未通过验证的用户
-        let r1 = client.query_one(&s1, &[resource_id]).await?;
+        let r1 = client.query_one(&vec_s[0], &[resource_id]).await?;
         let resource_paths: Vec<&str> = r1.get("paths");
         let resource_path = resource_paths[resource_type.to_index()];
         if resource_path == "" {
@@ -295,7 +318,7 @@ pub async fn get_resource_url(
         (download_url, downloaded) = try_join(
             resource_provider.get_download_url(resource_path, client_group),
             async {
-                let r5 = client.query_one(&s5, &[resource_id]).await?;
+                let r5 = client.query_one(&vec_s[4], &[resource_id]).await?;
                 return Ok(r5.get("downloaded"));
             },
         )

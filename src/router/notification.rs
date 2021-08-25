@@ -63,6 +63,7 @@ pub async fn post_notification(
                     SELECT role_id 
                     FROM igame.user_role 
                     WHERE user_id = $1
+                    AND (expire_at IS NULL OR (expire_at IS NOT NULL AND expire_at > now()))
                 )",
                 Permission::CreateNotification.to_string()
             ),

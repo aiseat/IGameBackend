@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::model::permission::Role;
+use crate::model::permission::RoleID;
 
 #[derive(Debug, Serialize)]
 pub struct User {
@@ -17,6 +17,14 @@ pub struct User {
     pub avatar_url: String,
     pub exp: i32,
     pub coin: i32,
+    pub roles: Vec<Role>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Role {
+    pub id: i32,
+    pub name: String,
+    pub expire_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,7 +37,7 @@ pub struct UserCreateInput {
     pub email: String,
     pub nick_name: String,
     pub password: String,
-    pub role: Role,
+    pub role: RoleID,
 }
 
 impl Default for User {
@@ -44,6 +52,7 @@ impl Default for User {
             avatar_url: String::new(),
             exp: 0,
             coin: 0,
+            roles: Vec::new(),
         }
     }
 }
