@@ -1,6 +1,6 @@
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use deadpool_postgres::{Client, Pool};
-use futures::future::{try_join, try_join3, try_join4};
+use futures::future::{try_join, try_join3, try_join5};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -22,15 +22,15 @@ pub async fn get_resource(
     let (s1, s2, s3) = try_join3(
         client.prepare_typed_cached(
             "WITH r1 AS (
-                SELECT id, name, allowed_exp, full_costs, update_costs, supported_systems, change_log, depend_ids, updated_at
+                SELECT id, name, allowed_exp, downloaded, full_costs, update_costs, supported_systems, change_log, depend_ids, updated_at
                 FROM common.resource AS r
                 WHERE r.id = $1
             )
-            SELECT r1.id, r1.name, r1.allowed_exp, r1.full_costs, r1.update_costs, r1.supported_systems, r1.change_log, r1.updated_at, array_agg(r2.id) AS depend_ids, array_agg(r2.name) AS depend_names, array_agg(r2.app_id) AS depend_app_ids, array_agg(r2.app_type) AS depend_app_types
+            SELECT r1.id, r1.name, r1.allowed_exp, r1.downloaded, r1.full_costs, r1.update_costs, r1.supported_systems, r1.change_log, r1.updated_at, array_agg(r2.id) AS depend_ids, array_agg(r2.name) AS depend_names, array_agg(r2.app_id) AS depend_app_ids, array_agg(r2.app_type) AS depend_app_types
             FROM r1
             LEFT JOIN common.resource AS r2
             ON r2.id = ANY(r1.depend_ids)
-            GROUP BY r1.id, r1.name, r1.allowed_exp, r1.full_costs, r1.update_costs, r1.supported_systems, r1.change_log, r1.updated_at",
+            GROUP BY r1.id, r1.name, r1.allowed_exp, r1.downloaded, r1.full_costs, r1.update_costs, r1.supported_systems, r1.change_log, r1.updated_at",
             &[DBType::INT4]
         ),
         client.prepare_typed_cached(
@@ -119,6 +119,7 @@ pub async fn get_resource(
         id: r1.get("id"),
         name: r1.get("name"),
         allowed_exp: r1.get("allowed_exp"),
+        downloaded: r1.get("downloaded"),
         full_costs: r1.get("full_costs"),
         update_costs: r1.get("update_costs"),
         supported_systems: r1.get("supported_systems"),
@@ -141,7 +142,7 @@ pub async fn get_resource_url(
     let resource_type = &query.r#type;
     let client_group = &query.group;
 
-    let (s1, s2, s3, s4) = try_join4(
+    let (s1, s2, s3, s4, s5) = try_join5(
         client.prepare_typed_cached(
             &format!(
                 "SELECT allowed_exp, paths, {}_costs AS costs FROM common.resource WHERE id = $1",
@@ -161,12 +162,15 @@ pub async fn get_resource_url(
             "UPDATE common.user SET coin = coin - $1 WHERE id = $2 RETURNING coin",
             &[DBType::INT4, DBType::INT4],
         ),
+        client.prepare_typed_cached(
+            "UPDATE common.resource SET downloaded = downloaded + 1 WHERE id = $1 RETURNING downloaded",
+            &[DBType::INT4],
+        ),
     )
     .await?;
 
     let download_url: String;
-    let mut trade_id: i32 = 0;
-    let mut remain_coin: i32 = 0;
+    let downloaded: i32;
     if let Some(access_token) = get_access_token(&req) {
         // 登陆用户
         let user_id = parse_access_token(&access_token)?.user_id;
@@ -214,27 +218,50 @@ pub async fn get_resource_url(
 
         if cost > 0 {
             // 如果费用大于0，进行交易
+            let trade_id: i32;
+            let remain_coin: i32;
             let transaction: deadpool_postgres::Transaction;
-            (download_url, (transaction, trade_id, remain_coin)) = try_join(
+            (
+                download_url,
+                (transaction, trade_id, remain_coin, downloaded),
+            ) = try_join(
                 resource_provider.get_download_url(resource_path, client_group),
                 async {
                     let trade_type: i16 = 0;
                     let transaction = client.transaction().await?;
-                    let (r3, r4) = try_join(
+                    let (r3, r4, r5) = try_join3(
                         transaction.query_one(&s3, &[&user_id, &trade_type, &cost]),
                         transaction.query_one(&s4, &[&cost, &user_id]),
+                        transaction.query_one(&s5, &[resource_id]),
                     )
                     .await?;
-                    return Ok((transaction, r3.get("id"), r4.get("coin")));
+                    return Ok((
+                        transaction,
+                        r3.get("id"),
+                        r4.get("coin"),
+                        r5.get("downloaded"),
+                    ));
                 },
             )
             .await?;
             transaction.commit().await?;
+
+            return Ok(HttpResponse::Ok().json(
+                json!({ "download_url": download_url, "trade_id": trade_id, "remain_coin": remain_coin, "downloaded": downloaded }),
+            ));
         } else {
             // 费用为0，直接下载
-            download_url = resource_provider
-                .get_download_url(resource_path, client_group)
-                .await?;
+            (download_url, downloaded) = try_join(
+                resource_provider.get_download_url(resource_path, client_group),
+                async {
+                    let r5 = client.query_one(&s5, &[resource_id]).await?;
+                    return Ok(r5.get("downloaded"));
+                },
+            )
+            .await?;
+
+            return Ok(HttpResponse::Ok()
+                .json(json!({ "download_url": download_url, "downloaded": downloaded })));
         }
     } else {
         // 游客或未通过验证的用户
@@ -265,12 +292,16 @@ pub async fn get_resource_url(
             ));
         }
 
-        download_url = resource_provider
-            .get_download_url(resource_path, client_group)
-            .await?;
-    }
+        (download_url, downloaded) = try_join(
+            resource_provider.get_download_url(resource_path, client_group),
+            async {
+                let r5 = client.query_one(&s5, &[resource_id]).await?;
+                return Ok(r5.get("downloaded"));
+            },
+        )
+        .await?;
 
-    Ok(HttpResponse::Ok().json(
-        json!({ "download_url": download_url, "trade_id": trade_id, "remain_coin": remain_coin }),
-    ))
+        return Ok(HttpResponse::Ok()
+            .json(json!({ "download_url": download_url, "downloaded": downloaded })));
+    }
 }

@@ -1,6 +1,8 @@
+mod article;
 mod email;
 mod game_article;
 mod mod_article;
+mod notification;
 mod resource;
 mod tag;
 mod token;
@@ -21,6 +23,11 @@ pub fn register(cfg: &mut actix_web::web::ServiceConfig) {
         token::post_reset_password,
     ));
     cfg.service((
+        article::get_article_subscribe_stataus,
+        article::post_article_subscribe,
+        article::post_article_unsubscribe,
+    ));
+    cfg.service((
         game_article::get_game_article_covers,
         game_article::get_game_article_size,
         game_article::get_game_article,
@@ -32,4 +39,8 @@ pub fn register(cfg: &mut actix_web::web::ServiceConfig) {
     ));
     cfg.service((resource::get_resource, resource::get_resource_url));
     cfg.service(tag::get_tags);
+    cfg.service((
+        notification::get_notification,
+        notification::post_notification,
+    ));
 }

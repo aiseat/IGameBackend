@@ -6,7 +6,7 @@ use serde_json::json;
 use crate::db::Type as DBType;
 use crate::error::ResponseError;
 use crate::model::{
-    game_mod::{
+    mod_article::{
         GetModArticleCoverOutput, GetModArticleCoverOutputItem, GetModArticleCoverQuery,
         GetModArticleOutput, GetModArticlePath,
     },
@@ -25,13 +25,13 @@ pub async fn get_mod_article_covers(
         client.prepare_typed_cached(
             &format!(
             "WITH a AS (
-                SELECT id, tag_ids, title, view, subscription, allowed_exp, vertical_image, game_article_id, game_article_title, updated_at FROM igame.mod_article WHERE id > $1 AND $2 <@ tag_ids LIMIT $3
+                SELECT id, tag_ids, title, view, subscription, allowed_exp, vertical_image, horizontal_image, game_article_id, game_article_title, updated_at FROM igame.mod_article WHERE id > $1 AND $2 <@ tag_ids LIMIT $3
             )
-            SELECT a.id, a.title, a.view, a.subscription, a.allowed_exp, a.vertical_image, a.game_article_id, a.game_article_title, a.updated_at, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values
+            SELECT a.id, a.title, a.view, a.subscription, a.allowed_exp, a.vertical_image, a.horizontal_image, a.game_article_id, a.game_article_title, a.updated_at, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values
             FROM a
             INNER JOIN igame.tag AS t
             ON t.type = 2 AND t.id = ANY(a.tag_ids)
-            GROUP BY a.id, a.title, a.view, a.subscription, a.allowed_exp, a.vertical_image, a.game_article_id, a.game_article_title, a.updated_at
+            GROUP BY a.id, a.title, a.view, a.subscription, a.allowed_exp, a.vertical_image, a.horizontal_image, a.game_article_id, a.game_article_title, a.updated_at
             ORDER BY a.{}", 
             query.sort_by.to_string()),
             &[DBType::INT4, DBType::INT4_ARRAY, DBType::INT4]
@@ -39,13 +39,13 @@ pub async fn get_mod_article_covers(
         client.prepare_typed_cached(
             &format!(
             "WITH a AS (
-                SELECT id, tag_ids, title, view, subscription, allowed_exp, vertical_image, game_article_id, game_article_title, updated_at FROM igame.mod_article WHERE game_article_id = $1 AND id > $2 AND $3 <@ tag_ids LIMIT $4
+                SELECT id, tag_ids, title, view, subscription, allowed_exp, vertical_image, horizontal_image, game_article_id, game_article_title, updated_at FROM igame.mod_article WHERE game_article_id = $1 AND id > $2 AND $3 <@ tag_ids LIMIT $4
             )
-            SELECT a.id, a.title, a.view, a.subscription, a.allowed_exp, a.vertical_image, a.game_article_id, a.game_article_title, a.updated_at, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values
+            SELECT a.id, a.title, a.view, a.subscription, a.allowed_exp, a.vertical_image, a.horizontal_image, a.game_article_id, a.game_article_title, a.updated_at, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values
             FROM a
             INNER JOIN igame.tag AS t
             ON t.type = 2 AND t.id = ANY(a.tag_ids)
-            GROUP BY a.id, a.title, a.view, a.subscription, a.allowed_exp, a.vertical_image, a.game_article_id, a.game_article_title, a.updated_at
+            GROUP BY a.id, a.title, a.view, a.subscription, a.allowed_exp, a.vertical_image, a.horizontal_image, a.game_article_id, a.game_article_title, a.updated_at
             ORDER BY a.{}", 
             query.sort_by.to_string()),
             &[DBType::INT4, DBType::INT4, DBType::INT4_ARRAY, DBType::INT4]
@@ -92,6 +92,7 @@ pub async fn get_mod_article_covers(
             subscription: r1.get("subscription"),
             allowed_exp: r1.get("allowed_exp"),
             vertical_image: r1.get("vertical_image"),
+            horizontal_image: r1.get("horizontal_image"),
             game_article_id: r1.get("game_article_id"),
             game_article_title: r1.get("game_article_title"),
             updated_at: r1.get("updated_at"),
@@ -122,23 +123,32 @@ pub async fn get_mod_article(
     path: web::Path<GetModArticlePath>,
 ) -> Result<HttpResponse, ResponseError> {
     let client: Client = db_pool.get().await?;
-    let s1 = client.prepare_typed_cached(
-        "WITH t AS (
-            SELECT a.id, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values, a.app_id, a.title, a.description, a.content, a.view, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.game_article_id, a.game_article_title, a.updated_at
-            FROM igame.mod_article AS a
-            INNER JOIN igame.tag AS t
-            ON a.id = $1 AND t.type = 2 AND t.id = ANY(a.tag_ids)
-            GROUP BY a.id, a.app_id, a.title, a.description, a.content, a.view, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.game_article_id, a.game_article_title, a.updated_at
+    let (s1, s2) = try_join(
+        client.prepare_typed_cached(
+            "WITH t AS (
+                SELECT a.id, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values, a.app_id, a.title, a.description, a.content, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.game_article_id, a.game_article_title, a.updated_at
+                FROM igame.mod_article AS a
+                INNER JOIN igame.tag AS t
+                ON a.id = $1 AND t.type = 2 AND t.id = ANY(a.tag_ids)
+                GROUP BY a.id, a.app_id, a.title, a.description, a.content, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.game_article_id, a.game_article_title, a.updated_at
+            )
+            SELECT t.*, array_agg(r.id) AS resource_ids, array_agg(r.name) AS resource_names, array_agg(r.downloaded) AS resource_downloadeds
+            FROM t
+            LEFT JOIN common.resource AS r
+            ON t.app_id = r.app_id 
+            GROUP BY t.id, t.tag_ids, t.tag_values, t.app_id, t.title, t.description, t.content, t.subscription, t.allowed_exp, t.horizontal_image, t.content_images, t.content_videos, t.game_article_id, t.game_article_title, t.updated_at",
+            &[DBType::INT4]
+        ), 
+        client.prepare_typed_cached(
+            "UPDATE igame.mod_article SET view = view + 1 WHERE id = $1 RETURNING view",
+            &[DBType::INT4]
         )
-        SELECT t.*, array_agg(r.id) AS resource_ids, array_agg(r.name) AS resource_names
-        FROM t
-        LEFT JOIN common.resource AS r
-        ON t.app_id = r.app_id 
-        GROUP BY t.id, t.tag_ids, t.tag_values, t.app_id, t.title, t.description, t.content, t.view, t.subscription, t.allowed_exp, t.horizontal_image, t.content_images, t.content_videos, t.game_article_id, t.game_article_title, t.updated_at",
-        &[DBType::INT4]
     ).await?;
 
-    let r1 = client.query_one(&s1, &[&path.id]).await?;
+    let (r1, r2) = try_join(
+        client.query_one(&s1, &[&path.id]), 
+        client.query_one(&s2, &[&path.id])
+    ).await?;
 
     let mut tags: Vec<Tag> = Vec::new();
     let tag_ids: Vec<i32> = r1.get("tag_ids");
@@ -151,14 +161,18 @@ pub async fn get_mod_article(
             });
         }
     }
+    let mut downloaded: i32 = 0;
     let mut resources: Vec<ResourceSimple> = Vec::new();
     let resource_ids: Vec<i32> = r1.get("resource_ids");
     if resource_ids.len() > 0 {
         let resource_names: Vec<&str> = r1.get("resource_names");
+        let downloadeds: Vec<i32> = r1.get("resource_downloadeds");
         for (index, resource_id) in resource_ids.iter().enumerate() {
+            downloaded += downloadeds[index];
             resources.push(ResourceSimple {
                 id: *resource_id,
                 name: resource_names[index].to_string(),
+                downloaded: downloadeds[index],
             });
         }
     }
@@ -171,8 +185,9 @@ pub async fn get_mod_article(
         title: r1.get("title"),
         description: r1.get("description"),
         content: r1.get("content"),
-        view: r1.get("view"),
+        view: r2.get("view"),
         subscription: r1.get("subscription"),
+        downloaded: downloaded,
         allowed_exp: r1.get("allowed_exp"),
         horizontal_image: r1.get("horizontal_image"),
         content_images: r1.get("content_images"),

@@ -1,6 +1,8 @@
+pub mod article;
 pub mod email;
-pub mod game;
-pub mod game_mod;
+pub mod game_article;
+pub mod mod_article;
+pub mod notification;
 pub mod permission;
 pub mod resource;
 pub mod tag;

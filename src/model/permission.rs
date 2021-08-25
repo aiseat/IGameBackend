@@ -9,6 +9,8 @@ pub enum Permission {
     CreateUser,
     #[display(fmt = "send_email")]
     SendEmail,
+    #[display(fmt = "create_notification")]
+    CreateNotification,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy)]

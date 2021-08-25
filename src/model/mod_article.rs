@@ -6,17 +6,18 @@ use crate::model::{resource::ResourceSimple, tag::Tag};
 use crate::util::serde_fn::option_str_to_vec;
 
 #[derive(Debug, Deserialize)]
-pub struct GetGameArticleCoverQuery {
+pub struct GetModArticleCoverQuery {
     pub last_id: i32,
     pub amount: i32,
     #[serde(default)]
     #[serde(deserialize_with = "option_str_to_vec")]
     pub tag_ids: Vec<i32>,
-    pub sort_by: GameArticleCoverSort,
+    pub game_article_id: Option<i32>,
+    pub sort_by: ModArticleCoverSort,
 }
 
 #[derive(Debug, Deserialize, Display)]
-pub enum GameArticleCoverSort {
+pub enum ModArticleCoverSort {
     #[serde(rename = "id")]
     #[display(fmt = "id")]
     IdAsc,
@@ -35,6 +36,12 @@ pub enum GameArticleCoverSort {
     #[serde(rename = "view_desc")]
     #[display(fmt = "view DESC")]
     ViewDesc,
+    #[serde(rename = "downloaded")]
+    #[display(fmt = "downloaded")]
+    DownloadedASC,
+    #[serde(rename = "downloaded_desc")]
+    #[display(fmt = "downloaded DESC")]
+    DownloadedDeSC,
     #[serde(rename = "subscription")]
     #[display(fmt = "subscription")]
     SubscriptionAsc,
@@ -44,14 +51,14 @@ pub enum GameArticleCoverSort {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GetGameArticlePath {
+pub struct GetModArticlePath {
     pub id: i32,
 }
 
-pub type GetGameArticleCoverOutput = Vec<GetGameArticleCoverOutputItem>;
+pub type GetModArticleCoverOutput = Vec<GetModArticleCoverOutputItem>;
 
 #[derive(Debug, Serialize)]
-pub struct GetGameArticleCoverOutputItem {
+pub struct GetModArticleCoverOutputItem {
     pub id: i32,
     pub tags: Vec<Tag>,
     pub title: String,
@@ -59,11 +66,14 @@ pub struct GetGameArticleCoverOutputItem {
     pub subscription: i32,
     pub allowed_exp: i32,
     pub vertical_image: String,
+    pub horizontal_image: String,
+    pub game_article_id: i32,
+    pub game_article_title: String,
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct GetGameArticleOutput {
+pub struct GetModArticleOutput {
     pub id: i32,
     pub tags: Vec<Tag>,
     pub app_id: i32,
@@ -73,9 +83,12 @@ pub struct GetGameArticleOutput {
     pub content: String,
     pub view: i32,
     pub subscription: i32,
+    pub downloaded: i32,
     pub allowed_exp: i32,
     pub horizontal_image: String,
     pub content_images: Vec<String>,
     pub content_videos: Vec<String>,
+    pub game_article_id: i32,
+    pub game_article_title: String,
     pub updated_at: DateTime<Utc>,
 }

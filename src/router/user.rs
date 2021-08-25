@@ -1,16 +1,16 @@
 use actix_web::{get, post, web, HttpRequest, HttpResponse};
 use deadpool_postgres::{Client, Pool};
 use serde_json::json;
-use futures::future::{try_join, try_join3, try_join4};
+use futures::future::{try_join, try_join3};
 use chrono::{DateTime, Duration, Utc, FixedOffset, Datelike};
 
 use crate::db::Type as DBType;
-use crate::error::ResponseError;
+use crate::error::{ResponseError, is_db_zero_line_error};
 use crate::model::{
     permission::Permission,
     user::{User, GetUserPath, UserCreateInput},
 };
-use crate::util::{req_parse::get_user_id, hash::hash_password, is_db_zero_line_error};
+use crate::util::{req_parse::get_user_id, hash::hash_password};
 
 // GetUser权限
 #[get("/user/{id}")]
@@ -24,7 +24,7 @@ pub async fn get_user(
 
     let (s1, s2) = try_join(
         client.prepare_typed_cached(
-        &format!("SELECT bool_or({}) FROM igame.role WHERE id IN (SELECT role_id FROM igame.user_role WEHRE user_id = $1)", Permission::GetUser.to_string()),
+        &format!("SELECT bool_or({}) FROM igame.role WHERE id IN (SELECT role_id FROM igame.user_role WHERE user_id = $1)", Permission::GetUser.to_string()),
         &[DBType::INT4]), 
         client.prepare_typed_cached("SELECT * FROM common.user WHERE id = $1", &[DBType::INT4])
     ).await?;
@@ -63,26 +63,35 @@ pub async fn post_user(
     db_pool: web::Data<Pool>,
     user_create_input: web::Json<UserCreateInput>,
 ) -> Result<HttpResponse, ResponseError> {
-    let mut client: Client = db_pool.get().await?;
+    let client: Client = db_pool.get().await?;
     let user_id = get_user_id(&req)?;
 
-    let (s1, s2, s3, s4) = try_join4(
+    let (s1, s2, s3) = try_join3(
         client.prepare_typed_cached(
-            &format!("SELECT bool_or({}) FROM igame.role WHERE id IN (SELECT role_id FROM igame.user_role WEHRE user_id = $1)", Permission::CreateUser.to_string()),
+            &format!("SELECT bool_or({}) FROM igame.role WHERE id IN (SELECT role_id FROM igame.user_role WHERE user_id = $1)", Permission::CreateUser.to_string()),
             &[DBType::INT4]),
         client.prepare_typed_cached(
             "SELECT EXISTS(SELECT 1 FROM common.user WHERE email = $1)",
             &[DBType::TEXT]),
         client.prepare_typed_cached(
-            "INSERT INTO common.user(email, nick_name, password) VALUES($1, $2, $3) RETURNING id",
-            &[DBType::TEXT, DBType::TEXT, DBType::BYTEA]),
-        client.prepare_typed_cached(
-            "INSERT INTO igame.user_role(user_id, role_id) VALUES($1, $2)",
-            &[DBType::INT4, DBType::INT4]),
+            "WITH
+            u AS (
+                INSERT INTO common.user(email, nick_name, password)
+                VALUES($1, $2, $3) RETURNING id),
+            n AS (
+                INSERT INTO igame.user_notification(user_id, notification_id)
+                SELECT (SELECT id FROM u), id FROM igame.notification
+                WHERE global = true)
+            INSERT INTO igame.user_role(user_id, role_id) SELECT id, $4 FROM u RETURNING user_id",
+            &[DBType::TEXT, DBType::TEXT, DBType::BYTEA, DBType::INT4]),
     ).await?;
 
-    // 检查是否有对应权限
-    let r1 = client.query_one(&s1, &[&user_id]).await?;
+    let (r1, r2) = try_join(
+        // 检查是否有对应权限
+        client.query_one(&s1, &[&user_id]),
+        //检查邮箱是否存在
+        client.query_one(&s2, &[&user_create_input.email])
+    ).await?;
     let has_permission: bool = r1.get(0);
     if !has_permission {
         return Err(ResponseError::permission_err(
@@ -90,9 +99,6 @@ pub async fn post_user(
             &format!("没有{}权限, 用户ID: {}", Permission::CreateUser.to_string(), user_id),
         ));
     }
-
-    //检查邮箱是否存在
-    let r2 = client.query_one(&s2, &[&user_create_input.email]).await?;
     let exist = r2.get(0);
     if exist {
         return Err(ResponseError::input_err(
@@ -102,21 +108,19 @@ pub async fn post_user(
     }
 
     // 添加用户
-    let transaction = client.transaction().await?;
     let hased_password = hash_password(&user_create_input.password);
-    let r1 = transaction
+    let r3 = client
         .query_one(
             &s3,
             &[
                 &user_create_input.email,
                 &user_create_input.nick_name,
                 &hased_password,
+                &user_create_input.role.to_i32(),
             ],
         )
         .await?;
-    let user_id: i32 = r1.get("id");
-    transaction.execute(&s4, &[&user_id, &user_create_input.role.to_i32()]).await?;
-    transaction.commit().await?;
+    let user_id: i32 = r3.get("id");
 
     Ok(HttpResponse::Ok().json(json!({ "user_id": user_id })))
 }
