@@ -219,6 +219,7 @@ pub async fn get_resource_url(
         if !can_ignore_exp && user_exp < allowed_exp {
             return Err(ResponseError::lack_exp_err(
                 "无法获取资源链接",
+                allowed_exp,
                 &format!(
                     "请求资源id:{}, type:{}, client_group: {}",
                     resource_id, resource_type, client_group
@@ -228,6 +229,7 @@ pub async fn get_resource_url(
         if !can_free_download && user_coin < cost {
             return Err(ResponseError::lack_coin_err(
                 "无法获取资源链接",
+                cost,
                 &format!(
                     "请求资源id:{}, type:{}, client_group: {}",
                     resource_id, resource_type, client_group

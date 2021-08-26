@@ -160,6 +160,7 @@ pub async fn get_game_article(
             if !can_ignore_exp && exp < allowed_exp {
                 return Err(ResponseError::lack_exp_err(
                     "无法浏览本文章",
+                    allowed_exp,
                     &format!("文章ID:{}, 文章类型: game", article_id),
                 ));
             }
