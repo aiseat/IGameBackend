@@ -305,13 +305,24 @@ pub async fn get_resource_url(
         };
         let allowed_exp: i32 = r1.get("allowed_exp");
         let costs: Vec<i32> = r1.get("costs");
-
         let cost = costs[client_group.to_index()];
-        if allowed_exp != 0 || cost != 0 {
-            return Err(ResponseError::permission_err(
-                "只有登陆用户有权下载本资源",
+
+        if allowed_exp != 0 {
+            return Err(ResponseError::lack_exp_err(
+                "无法下载本资源",
+                allowed_exp,
                 &format!(
-                    "请求资源id:{}, type:{}, client_group: {}",
+                    "用户ID：游客，请求资源ID：{}, 资源类型：{}, 资源提供组：{}",
+                    resource_id, resource_type, client_group
+                ),
+            ));
+        }
+        if cost != 0 {
+            return Err(ResponseError::lack_coin_err(
+                "无法下载本资源",
+                cost,
+                &format!(
+                    "用户ID：游客，请求资源ID：{}, 资源类型：{}, 资源提供组：{}",
                     resource_id, resource_type, client_group
                 ),
             ));

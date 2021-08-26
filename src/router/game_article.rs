@@ -144,9 +144,10 @@ pub async fn get_game_article(
 
     if allowed_exp > 0 {
         if !is_login {
-            return Err(ResponseError::permission_err(
-                "只有登陆用户有权浏览本文章",
-                &format!("文章ID:{}, 文章类型: game", article_id),
+            return Err(ResponseError::lack_exp_err(
+                "无法浏览本文章",
+                allowed_exp,
+                &format!("用户ID：游客，文章ID:{}, 文章类型: game", article_id),
             ));
         } else {
             let user_id = get_user_id(&req)?;
@@ -161,7 +162,7 @@ pub async fn get_game_article(
                 return Err(ResponseError::lack_exp_err(
                     "无法浏览本文章",
                     allowed_exp,
-                    &format!("文章ID:{}, 文章类型: game", article_id),
+                    &format!("用户ID：{}，文章ID:{}, 文章类型: game", user_id, article_id),
                 ));
             }
         }

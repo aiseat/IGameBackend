@@ -111,7 +111,7 @@ pub async fn post_send_email(
     if !has_permission {
         return Err(ResponseError::permission_err(
             "发送email失败",
-            &format!("尝试发送email失败，用户没有对应权限，用户ID: {}", user_id),
+            &format!("尝试发送email失败，用户ID: {}", user_id),
         ));
     }
 
