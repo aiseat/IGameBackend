@@ -99,17 +99,17 @@ pub async fn get_game_article(
     let (s1, s2, s3, s4) = try_join4(
         client.prepare_typed_cached(
             "WITH t AS (
-                SELECT a.id, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values, a.app_id, a.title, a.description, a.content, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.updated_at
+                SELECT a.id, array_agg(t.id) AS tag_ids, array_agg(t.value) AS tag_values, a.app_id, a.title, a.description, a.content, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.content_video_thumbs, a.updated_at
                 FROM igame.game_article AS a
                 INNER JOIN igame.tag AS t
                 ON a.id = $1 AND t.type = 1 AND t.id = ANY(a.tag_ids)
-                GROUP BY a.id, a.app_id, a.title, a.description, a.content, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.updated_at
+                GROUP BY a.id, a.app_id, a.title, a.description, a.content, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.content_video_thumbs, a.updated_at
             )
             SELECT t.*, array_agg(r.id) AS resource_ids, array_agg(r.name) AS resource_names, array_agg(r.downloaded) AS resource_downloadeds
             FROM t
             LEFT JOIN common.resource AS r
             ON t.app_id = r.app_id 
-            GROUP BY t.id, t.tag_ids, t.tag_values, t.app_id, t.title, t.description, t.content, t.subscription, t.allowed_exp, t.horizontal_image, t.content_images, t.content_videos, t.updated_at",
+            GROUP BY t.id, t.tag_ids, t.tag_values, t.app_id, t.title, t.description, t.content, t.subscription, t.allowed_exp, t.horizontal_image, t.content_images, t.content_videos, t.content_video_thumbs, t.updated_at",
             &[DBType::INT4]
         ),
         client.prepare_typed_cached(
@@ -212,6 +212,7 @@ pub async fn get_game_article(
         horizontal_image: r1.get("horizontal_image"),
         content_images: r1.get("content_images"),
         content_videos: r1.get("content_videos"),
+        content_video_thumbs: r1.get("content_video_thumbs"),
         updated_at: r1.get("updated_at"),
     }))
 }

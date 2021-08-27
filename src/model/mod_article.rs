@@ -88,6 +88,7 @@ pub struct GetModArticleOutput {
     pub horizontal_image: String,
     pub content_images: Vec<String>,
     pub content_videos: Vec<String>,
+    pub content_video_thumbs: Vec<String>,
     pub game_article_id: i32,
     pub game_article_title: String,
     pub updated_at: DateTime<Utc>,

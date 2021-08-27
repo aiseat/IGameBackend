@@ -85,5 +85,6 @@ pub struct GetGameArticleOutput {
     pub horizontal_image: String,
     pub content_images: Vec<String>,
     pub content_videos: Vec<String>,
+    pub content_video_thumbs: Vec<String>,
     pub updated_at: DateTime<Utc>,
 }
