@@ -1,6 +1,7 @@
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use deadpool_postgres::{Client, Pool};
 use futures::future::{try_join, try_join4};
+use postgres_array::Array;
 use serde_json::json;
 
 use crate::db::Type as DBType;
@@ -216,14 +217,19 @@ pub async fn get_mod_article(
     let resource_ids: Vec<i32> = r1.get("resource_ids");
     if resource_ids.len() > 0 {
         let resource_names: Vec<&str> = r1.get("resource_names");
-        let versions: Vec<&str> = r1.get("resource_versions");
+        let version_array: Array<i32> = r1.get("resource_versions");
+        let versions = version_array.into_inner();
         let downloadeds: Vec<i32> = r1.get("resource_downloadeds");
         for (index, resource_id) in resource_ids.iter().enumerate() {
             downloaded += downloadeds[index];
             resources.push(ResourceSimple {
                 id: *resource_id,
                 name: resource_names[index].to_string(),
-                version: versions[index].to_string(),
+                version: vec![
+                    versions[3 * index],
+                    versions[3 * index + 1],
+                    versions[3 * index + 2],
+                ],
                 downloaded: downloadeds[index],
             });
         }
