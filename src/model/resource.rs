@@ -9,6 +9,7 @@ pub struct ResourceSimple {
     pub id: i32,
     pub name: String,
     pub version: Vec<i32>,
+    pub allowed_exp: i32,
     pub downloaded: i32,
 }
 

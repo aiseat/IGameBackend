@@ -106,7 +106,7 @@ pub async fn get_game_article(
                 ON a.id = $1 AND t.type = 1 AND t.id = ANY(a.tag_ids)
                 GROUP BY a.id, a.app_id, a.title, a.description, a.content, a.subscription, a.allowed_exp, a.horizontal_image, a.content_images, a.content_videos, a.content_video_thumbs, a.updated_at
             )
-            SELECT t.*, array_agg(r.id) AS resource_ids, array_agg(r.name) AS resource_names, array_agg(r.version) AS resource_versions, array_agg(r.downloaded) AS resource_downloadeds
+            SELECT t.*, array_agg(r.id) AS resource_ids, array_agg(r.name) AS resource_names, array_agg(r.version) AS resource_versions, array_agg(r.downloaded) AS resource_downloadeds, array_agg(r.allowed_exp) AS resource_allowed_exp
             FROM t
             LEFT JOIN common.resource AS r
             ON t.app_id = r.app_id 
@@ -190,6 +190,7 @@ pub async fn get_game_article(
         let version_array: Array<i32> = r1.get("resource_versions");
         let versions = version_array.into_inner();
         let downloadeds: Vec<i32> = r1.get("resource_downloadeds");
+        let allowed_exps: Vec<i32> = r1.get("resource_allowed_exp");
         for (index, id) in ids.iter().enumerate() {
             downloaded += downloadeds[index];
             resources.push(ResourceSimple {
@@ -200,6 +201,7 @@ pub async fn get_game_article(
                     versions[3 * index + 1],
                     versions[3 * index + 2],
                 ],
+                allowed_exp: allowed_exps[index],
                 downloaded: downloadeds[index],
             });
         }
