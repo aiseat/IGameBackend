@@ -63,8 +63,8 @@ pub async fn get_resource(
         let mut mod_depend_app_ids = Vec::new();
         for (index, depend_id) in depend_ids.iter().enumerate() {
             match depend_app_types[index] {
-                2 => game_depend_app_ids.push(depend_app_ids[index]),
-                3 => mod_depend_app_ids.push(depend_app_ids[index]),
+                1 => game_depend_app_ids.push(depend_app_ids[index]),
+                2 => mod_depend_app_ids.push(depend_app_ids[index]),
                 _ => {
                     return Err(ResponseError::unexpected_err(
                         "数据库内部错误",
