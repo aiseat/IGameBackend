@@ -8,6 +8,7 @@ use crate::resource_provider::ClientGroup;
 pub struct ResourceSimple {
     pub id: i32,
     pub name: String,
+    pub version: String,
     pub downloaded: i32,
 }
 
@@ -19,7 +20,9 @@ pub struct GetResourcePath {
 #[derive(Debug, Serialize)]
 pub struct GetResourceOutput {
     pub id: i32,
+    pub app_id: i32,
     pub name: String,
+    pub version: String,
     pub allowed_exp: i32,
     pub downloaded: i32,
     pub full_costs: Vec<i32>,

@@ -25,15 +25,15 @@ pub async fn get_resource(
     let (s1, s2, s3) = try_join3(
         client.prepare_typed_cached(
             "WITH r1 AS (
-                SELECT id, name, allowed_exp, downloaded, full_costs, update_costs, supported_systems, change_log, depend_ids, updated_at
+                SELECT id, app_id, name, version, allowed_exp, downloaded, full_costs, update_costs, supported_systems, change_log, depend_ids, updated_at
                 FROM common.resource AS r
                 WHERE r.id = $1
             )
-            SELECT r1.id, r1.name, r1.allowed_exp, r1.downloaded, r1.full_costs, r1.update_costs, r1.supported_systems, r1.change_log, r1.updated_at, array_agg(r2.id) AS depend_ids, array_agg(r2.name) AS depend_names, array_agg(r2.app_id) AS depend_app_ids, array_agg(r2.app_type) AS depend_app_types
+            SELECT r1.id, r1.app_id, r1.name, r1.version, r1.allowed_exp, r1.downloaded, r1.full_costs, r1.update_costs, r1.supported_systems, r1.change_log, r1.updated_at, array_agg(r2.id) AS depend_ids, array_agg(r2.name) AS depend_names, array_agg(r2.app_id) AS depend_app_ids, array_agg(r2.app_type) AS depend_app_types
             FROM r1
             LEFT JOIN common.resource AS r2
             ON r2.id = ANY(r1.depend_ids)
-            GROUP BY r1.id, r1.name, r1.allowed_exp, r1.downloaded, r1.full_costs, r1.update_costs, r1.supported_systems, r1.change_log, r1.updated_at",
+            GROUP BY r1.id, r1.app_id, r1.name, r1.version, r1.allowed_exp, r1.downloaded, r1.full_costs, r1.update_costs, r1.supported_systems, r1.change_log, r1.updated_at",
             &[DBType::INT4]
         ),
         client.prepare_typed_cached(
@@ -120,7 +120,9 @@ pub async fn get_resource(
 
     Ok(HttpResponse::Ok().json(GetResourceOutput {
         id: r1.get("id"),
+        app_id: r1.get("app_id"),
         name: r1.get("name"),
+        version: r1.get("version"),
         allowed_exp: r1.get("allowed_exp"),
         downloaded: r1.get("downloaded"),
         full_costs: r1.get("full_costs"),
