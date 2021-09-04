@@ -1,6 +1,5 @@
 use derive_more::Display;
 use futures::future::join_all;
-use rand::{thread_rng, Rng};
 use reqwest::{header, ClientBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,12 +13,14 @@ use crate::error::ResponseError;
 #[derive(Clone)]
 pub struct ResourceProviderShare {
     provider: Arc<RwLock<ResourceProvider>>,
+    cache_manager: Arc<RwLock<CacheManager>>,
 }
 
 impl ResourceProviderShare {
     pub async fn new() -> Self {
         Self {
             provider: Arc::new(RwLock::new(ResourceProvider::new().await)),
+            cache_manager: Arc::new(RwLock::new(CacheManager::new())),
         }
     }
 
@@ -28,6 +29,21 @@ impl ResourceProviderShare {
         resource_path: &str,
         client_group: &ClientGroup,
     ) -> Result<String, ResponseError> {
+        // 查询缓存
+        let result = self
+            .cache_manager
+            .read()
+            .await
+            .get(client_group, resource_path);
+        if let Some(v) = result {
+            tracing::info!(
+                "[命中缓存]获取download_url成功, 资源路径: {}, 资源组: {}",
+                resource_path,
+                client_group
+            );
+            return Ok(v);
+        }
+
         let mut result: Result<String, ResponseError>;
         let mut client_index: usize;
         loop {
@@ -41,6 +57,12 @@ impl ResourceProviderShare {
             }
             match result {
                 Ok(v) => {
+                    //设置缓存
+                    self.cache_manager
+                        .write()
+                        .await
+                        .set(client_group, resource_path, v.as_str());
+
                     return Ok(v);
                 }
                 Err(e) => {
@@ -88,6 +110,34 @@ impl ResourceProviderShare {
     }
 }
 
+pub struct CacheManager {
+    cache: HashMap<(ClientGroup, String), (String, SystemTime)>,
+}
+
+impl CacheManager {
+    pub fn new() -> Self {
+        Self {
+            cache: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, group: &ClientGroup, path: &str) -> Option<String> {
+        let value = self.cache.get(&(*group, path.to_string()))?;
+        // 缓存将近两小时
+        if value.1 + Duration::from_secs(7000) > SystemTime::now() {
+            return Some(value.0.clone());
+        }
+        None
+    }
+
+    pub fn set(&mut self, group: &ClientGroup, path: &str, value: &str) {
+        self.cache.insert(
+            (*group, path.to_string()),
+            (value.to_string(), SystemTime::now()),
+        );
+    }
+}
+
 pub struct ResourceProvider {
     clients: Vec<MSGraphClient>,
     client_info_manager: ClientInfoManager,
@@ -116,12 +166,36 @@ impl ResourceProvider {
         resource_path: &str,
         client_group: &ClientGroup,
     ) -> Result<(Result<String, ResponseError>, usize), ResponseError> {
-        let find = self.client_info_manager.get_available_index(client_group);
-        if let Some(available_client_index) = find {
-            let result = self.clients[available_client_index]
-                .get_download_url(resource_path)
-                .await;
-            Ok((result, available_client_index))
+        let find = self.client_info_manager.get_available_indexes(client_group);
+        if let Some(available_client_indexes) = find {
+            for available_client_index in available_client_indexes {
+                let result = self.clients[available_client_index]
+                    .get_download_url(resource_path)
+                    .await;
+                match result {
+                    Ok(v) => {
+                        return Ok((Ok(v), 0));
+                    }
+                    Err(e) => {
+                        // 如果资源不存在，那么跳过
+                        if e.err_code == 7 {
+                            continue;
+                        } else {
+                            return Ok((Err(e), available_client_index));
+                        }
+                    }
+                }
+            }
+            return Ok((
+                Err(ResponseError::resource_not_found_err(
+                    "该资源不存在",
+                    &format!(
+                        "没有找到资源文件, 文件路径：{}, 文件组: {}",
+                        resource_path, client_group
+                    ),
+                )),
+                0,
+            ));
         } else {
             Err(ResponseError::resource_provider_unavailable_err(
                 "获取下载链接失败，请稍后重试",
@@ -189,25 +263,19 @@ impl ClientInfoManager {
         index
     }
 
-    pub fn get_available_index(&self, client_group: &ClientGroup) -> Option<usize> {
+    pub fn get_available_indexes(&self, client_group: &ClientGroup) -> Option<Vec<usize>> {
         let matched_index_vec = self.groups.get(client_group)?;
         let mut available_index_vec = Vec::new();
 
         for client_index in matched_index_vec {
             if self.available_times[*client_index] < SystemTime::now() {
-                available_index_vec.push(client_index);
+                available_index_vec.push(*client_index);
             }
         }
 
-        // 随机获取一个满足要求的client
         match available_index_vec.len() {
             0 => None,
-            1 => Some(*available_index_vec[0]),
-            _ => {
-                let mut rng = thread_rng();
-                let i = rng.gen_range(0..available_index_vec.len());
-                Some(*available_index_vec[i])
-            }
+            _ => Some(available_index_vec),
         }
     }
 
@@ -366,14 +434,15 @@ impl MSGraphClient {
 
         if !response.status().is_success() {
             if response.status() == StatusCode::BAD_REQUEST {
+                tracing::debug!(
+                    "[提供者{}]没有找到文件, 文件路径：{}, 发送get_download_url的响应状态码：400, 内容: {}",
+                    self.config.id,
+                    resource_path,
+                    response.text().await.unwrap()
+                );
                 return Err(ResponseError::resource_not_found_err(
-                    "该资源不存在",
-                    &format!(
-                        "[提供者{}]没有找到文件, 文件路径：{}, 发送get_download_url的响应状态码：400, 内容: {}",
-                        self.config.id,
-                        resource_path,
-                        response.text().await.unwrap(),
-                    ),
+                    "资源不存在",
+                    "错误状态码400",
                 ));
             } else {
                 return Err(ResponseError::resource_provider_unavailable_err(
