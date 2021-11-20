@@ -1,8 +1,9 @@
 use deadpool_postgres::{
-    config::SslMode, Config, ManagerConfig, Pool, PoolConfig, RecyclingMethod,
+    Config, ManagerConfig, Pool, PoolConfig, RecyclingMethod, Runtime, SslMode,
 };
 // use openssl::ssl::{SslConnector, SslMethod};
 use rustls::{ClientConfig, RootCertStore};
+use rustls_pemfile::certs;
 use std::time::Duration;
 use tokio_postgres::NoTls;
 use tokio_postgres_rustls::MakeRustlsConnect;
@@ -38,19 +39,23 @@ pub fn new_db_pool() -> Pool {
     match config.ssl {
         true => {
             cfg.ssl_mode = Some(SslMode::Require);
-            let mut client_config = ClientConfig::new();
             let mut root_store = RootCertStore::empty();
             let mut root_pem =
                 std::io::Cursor::new(std::fs::read(config.root_cert.clone()).unwrap());
-            root_store.add_pem_file(&mut root_pem).unwrap();
-            client_config.root_store = root_store;
+            root_store.add_parsable_certificates(&certs(&mut root_pem).unwrap());
+            let client_config = ClientConfig::builder()
+                .with_safe_defaults()
+                .with_root_certificates(root_store)
+                .with_no_client_auth();
             let tls_connector = MakeRustlsConnect::new(client_config);
-            let pool = cfg.create_pool(tls_connector).unwrap();
+            let pool = cfg
+                .create_pool(Some(Runtime::Tokio1), tls_connector)
+                .unwrap();
             pool
         }
         false => {
             cfg.ssl_mode = Some(SslMode::Disable);
-            let pool = cfg.create_pool(NoTls).unwrap();
+            let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls).unwrap();
             pool
         }
     }

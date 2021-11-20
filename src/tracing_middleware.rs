@@ -190,7 +190,6 @@ impl std::convert::Into<Span> for RootSpan {
 impl FromRequest for RootSpan {
     type Error = RootSpanExtractionError;
     type Future = Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
     fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         ready(

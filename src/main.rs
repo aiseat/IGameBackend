@@ -3,11 +3,9 @@
 
 use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use std::time::Duration;
+use time::macros::format_description;
 use tokio::time::interval;
-use tracing_subscriber::{
-    filter::{EnvFilter, LevelFilter},
-    fmt::time::ChronoLocal,
-};
+use tracing_subscriber::{filter::LevelFilter, fmt::time::LocalTime, EnvFilter};
 
 use crate::config::GLOBAL_CONFIG;
 use crate::resource_provider::ResourceProviderShare;
@@ -53,9 +51,9 @@ async fn async_main() {
     let subscriber_builder = tracing_subscriber::fmt::Subscriber::builder()
         .with_writer(stderr)
         .with_env_filter(env_filter)
-        .with_timer(ChronoLocal::with_format(
-            "%Y-%m-%d %H:%M:%S.%6f".to_string(),
-        ));
+        .with_timer(LocalTime::new(format_description!(
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:6]"
+        )));
     match GLOBAL_CONFIG.app.log_format.as_str() {
         "pretty" => {
             tracing::subscriber::set_global_default(subscriber_builder.pretty().finish()).unwrap()
@@ -75,7 +73,10 @@ async fn run_server() -> std::io::Result<()> {
     let db_pool = db::new_db_pool();
     // 维持一个与数据库的连接
     {
-        db_pool.get().await.unwrap();
+        #[allow(unused_must_use)]
+        {
+            db_pool.get().await.unwrap();
+        }
     }
     // 初始化邮件服务器连接池
     let email_pool = email::new_email_pool();
