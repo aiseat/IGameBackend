@@ -118,6 +118,10 @@ impl ResponseError {
         }
     }
 
+    pub fn is_resource_not_found_err(&self) -> bool {
+        return self.err_code == 7;
+    }
+
     pub fn already_done_err(err_message: &str, internal_message: &str) -> Self {
         Self {
             err_code: 8,

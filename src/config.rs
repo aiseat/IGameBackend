@@ -63,7 +63,7 @@ pub struct SQLConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MSGraphConfig {
-    pub id: usize,
+    pub id: String,
     pub connect_timeout: u64,
     pub whole_timeout: u64,
     pub pool_idle_timeout: u64,
