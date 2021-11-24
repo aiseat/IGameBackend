@@ -1,10 +1,28 @@
+use derive_more::Display;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
-use crate::resource_provider::ClientGroup;
-
 lazy_static! {
     pub static ref GLOBAL_CONFIG: Config = Config::new_from_file("config.toml");
+}
+
+#[derive(Deserialize, Serialize, Debug, Display, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProviderGroup {
+    #[serde(rename = "normal")]
+    #[display(fmt = "normal")]
+    Normal,
+    #[serde(rename = "fast")]
+    #[display(fmt = "fast")]
+    Fast,
+}
+
+impl ProviderGroup {
+    pub fn to_int2(&self) -> usize {
+        match self {
+            Self::Normal => 0,
+            Self::Fast => 1,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -67,7 +85,7 @@ pub struct MSGraphConfig {
     pub connect_timeout: u64,
     pub whole_timeout: u64,
     pub pool_idle_timeout: u64,
-    pub group: ClientGroup,
+    pub group: ProviderGroup,
     pub region: String,
     pub client_id: String,
     pub client_secret: String,

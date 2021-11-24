@@ -1,10 +1,9 @@
+pub mod app;
+pub mod app_subscribe;
 pub mod article;
 pub mod email;
-pub mod game_article;
-pub mod mod_article;
-pub mod notification;
-pub mod permission;
+pub mod notice;
 pub mod resource;
+pub mod role;
 pub mod tag;
-pub mod token;
 pub mod user;

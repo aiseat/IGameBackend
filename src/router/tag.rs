@@ -3,13 +3,13 @@ use deadpool_postgres::{Client, Pool};
 
 use crate::db::Type as DBType;
 use crate::error::ResponseError;
-use crate::model::tag::{GetTagOutput, GetTagsQuery, Tag};
+use crate::model::tag::{GetTagsOutput, GetTagsPath, Tag};
 
 // 获取tags
-#[get("/tags")]
+#[get("/{tag_type}/tags")]
 pub async fn get_tags(
     db_pool: web::Data<Pool>,
-    query: web::Query<GetTagsQuery>,
+    path: web::Path<GetTagsPath>,
 ) -> Result<HttpResponse, ResponseError> {
     let client: Client = db_pool.get().await?;
     let s1 = client
@@ -19,12 +19,12 @@ pub async fn get_tags(
         )
         .await?;
 
-    let r1s = client.query(&s1, &[&query.r#type.to_int2()]).await?;
+    let r1s = client.query(&s1, &[&path.tag_type.to_int2()]).await?;
 
-    let mut output: GetTagOutput = Vec::new();
+    let mut output: GetTagsOutput = Vec::new();
     for r1 in r1s {
         output.push(Tag {
-            id: r1.get("id"),
+            tag_id: r1.get("id"),
             value: r1.get("value"),
         });
     }

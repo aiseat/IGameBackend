@@ -1,12 +1,12 @@
-use derive_more::Display;
 use futures::future::join_all;
 use reqwest::{header, ClientBuilder, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::{sync::RwLock, time::interval};
 
+use crate::config::ProviderGroup;
 use crate::config::{MSGraphConfig, GLOBAL_CONFIG};
 use crate::error::ResponseError;
 
@@ -27,20 +27,20 @@ impl ResourceProviderShare {
     pub async fn get_download_url(
         &self,
         resource_path: &str,
-        client_group: &ClientGroup,
-        client_ids: Vec<&str>,
+        provider_group: &ProviderGroup,
+        provider_ids: Vec<&str>,
     ) -> Result<String, ResponseError> {
         // 查询缓存
         let result = self
             .cache_manager
             .read()
             .await
-            .get(client_group, resource_path);
+            .get(provider_group, resource_path);
         if let Some(v) = result {
             tracing::info!(
                 "[命中缓存]获取下载链接成功, 资源路径: {}, 提供者组: {}",
                 resource_path,
-                client_group
+                provider_group
             );
             return Ok(v);
         }
@@ -49,20 +49,21 @@ impl ResourceProviderShare {
             "服务暂不可用，获取下载链接失败，请稍后重试",
             "get_download_url方法的默认错误",
         );
-        for client_id in client_ids {
+        for provider_id in provider_ids {
             let result = self
                 .provider
                 .read()
                 .await
-                .get_download_url(resource_path, client_id)
+                .get_download_url(resource_path, provider_id)
                 .await;
             match result {
                 Ok(url) => {
                     //设置缓存
-                    self.cache_manager
-                        .write()
-                        .await
-                        .set(client_group, resource_path, url.as_str());
+                    self.cache_manager.write().await.set(
+                        provider_group,
+                        resource_path,
+                        url.as_str(),
+                    );
 
                     return Ok(url);
                 }
@@ -70,7 +71,7 @@ impl ResourceProviderShare {
                     if !e.is_resource_not_found_err() {
                         // 暂停该提供者
                         // 锁操作，谨慎处理
-                        self.provider.write().await.pause_client(client_id);
+                        self.provider.write().await.pause_provider(provider_id);
                         default_err = e;
                     }
                 }
@@ -86,23 +87,23 @@ impl ResourceProviderShare {
     //锁操作，谨慎处理
     pub async fn refresh_client_token(&self) {
         {
-            let mut need_refresh_client = Vec::new();
+            let mut need_refresh = Vec::new();
             // 每分钟重试一次，最多十次
             let mut interval = interval(Duration::from_secs(1 * 60));
             interval.tick().await;
             for i in 0..10 {
-                need_refresh_client = self
+                need_refresh = self
                     .provider
                     .write()
                     .await
-                    .refresh_client_token(&need_refresh_client)
+                    .refresh_client_token(&need_refresh)
                     .await;
-                if need_refresh_client.len() == 0 {
+                if need_refresh.len() == 0 {
                     break;
                 }
                 tracing::error!(
                     "{}个提供者获取refresh_token失败, 将于一分钟后重试, 重试次数: {}/10",
-                    need_refresh_client.len(),
+                    need_refresh.len(),
                     i + 1
                 );
                 interval.tick().await;
@@ -112,7 +113,7 @@ impl ResourceProviderShare {
 }
 
 pub struct CacheManager {
-    cache: HashMap<(ClientGroup, String), (String, SystemTime)>,
+    cache: HashMap<(ProviderGroup, String), (String, SystemTime)>,
 }
 
 impl CacheManager {
@@ -122,7 +123,7 @@ impl CacheManager {
         }
     }
 
-    pub fn get(&self, group: &ClientGroup, path: &str) -> Option<String> {
+    pub fn get(&self, group: &ProviderGroup, path: &str) -> Option<String> {
         let value = self.cache.get(&(*group, path.to_string()))?;
         // 缓存将近两小时
         if value.1 + Duration::from_secs(7000) > SystemTime::now() {
@@ -131,7 +132,7 @@ impl CacheManager {
         None
     }
 
-    pub fn set(&mut self, group: &ClientGroup, path: &str, value: &str) {
+    pub fn set(&mut self, group: &ProviderGroup, path: &str, value: &str) {
         self.cache.insert(
             (*group, path.to_string()),
             (value.to_string(), SystemTime::now()),
@@ -170,17 +171,17 @@ impl ResourceProvider {
     pub async fn get_download_url(
         &self,
         resource_path: &str,
-        client_id: &str,
+        provider_id: &str,
     ) -> Result<String, ResponseError> {
-        if self.client_info_manager.is_available(client_id) {
-            let result = self.clients[client_id]
+        if self.client_info_manager.is_available(provider_id) {
+            let result = self.clients[provider_id]
                 .get_download_url(resource_path)
                 .await;
             result
         } else {
             Err(ResponseError::resource_provider_unavailable_err(
                 "服务暂不可用，获取下载链接失败，请稍后重试",
-                &format!("[提供者{}]处于暂停中", client_id),
+                &format!("[提供者{}]处于暂停中", provider_id),
             ))
         }
     }
@@ -195,9 +196,9 @@ impl ResourceProvider {
         global_config.write_to_file().await;
     }
 
-    pub fn pause_client(&mut self, client_id: &str) {
+    pub fn pause_provider(&mut self, provider_id: &str) {
         self.client_info_manager
-            .pause(client_id, Duration::from_secs(3 * 60));
+            .pause(provider_id, Duration::from_secs(3 * 60));
     }
 
     pub async fn refresh_client_token(&mut self, need_refresh: &Vec<String>) -> Vec<String> {
@@ -235,23 +236,23 @@ impl ClientInfoManager {
         }
     }
 
-    pub fn add(&mut self, client_id: &str) -> usize {
+    pub fn add(&mut self, provider_id: &str) -> usize {
         self.pause_times
-            .insert(client_id.to_string(), SystemTime::now());
+            .insert(provider_id.to_string(), SystemTime::now());
         self.pause_times.len()
     }
 
-    pub fn is_available(&self, client_id: &str) -> bool {
-        if let Some(pause_time) = self.pause_times.get(client_id) {
+    pub fn is_available(&self, provider_id: &str) -> bool {
+        if let Some(pause_time) = self.pause_times.get(provider_id) {
             return *pause_time < SystemTime::now();
         }
         false
     }
 
-    pub fn pause(&mut self, client_id: &str, duration: Duration) {
+    pub fn pause(&mut self, provider_id: &str, duration: Duration) {
         self.pause_times
-            .insert(client_id.to_string(), SystemTime::now() + duration);
-        tracing::info!("[提供者{}]被暂停{:?}", client_id, duration);
+            .insert(provider_id.to_string(), SystemTime::now() + duration);
+        tracing::info!("[提供者{}]被暂停{:?}", provider_id, duration);
     }
 }
 
@@ -490,24 +491,5 @@ impl MSGraphClient {
 
         tracing::info!("[提供者{}]获取refresh_token成功", self.config.id);
         Ok(())
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug, Display, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ClientGroup {
-    #[serde(rename = "normal")]
-    #[display(fmt = "normal")]
-    Normal,
-    #[serde(rename = "fast")]
-    #[display(fmt = "fast")]
-    Fast,
-}
-
-impl ClientGroup {
-    pub fn to_index(&self) -> usize {
-        match self {
-            Self::Normal => 0,
-            Self::Fast => 1,
-        }
     }
 }

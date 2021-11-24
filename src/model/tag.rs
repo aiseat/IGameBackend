@@ -1,16 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
-pub struct Tag {
-    pub id: i32,
-    pub value: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GetTagsQuery {
-    pub r#type: TagType,
-}
-
 #[derive(Debug, Deserialize)]
 pub enum TagType {
     #[serde(rename = "game")]
@@ -28,4 +17,15 @@ impl TagType {
     }
 }
 
-pub type GetTagOutput = Vec<Tag>;
+#[derive(Debug, Serialize)]
+pub struct Tag {
+    pub tag_id: i32,
+    pub value: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetTagsPath {
+    pub tag_type: TagType,
+}
+
+pub type GetTagsOutput = Vec<Tag>;

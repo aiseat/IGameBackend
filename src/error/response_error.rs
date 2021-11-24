@@ -49,7 +49,7 @@ impl ResponseError {
     pub fn permission_err(err_message: &str, internal_message: &str) -> Self {
         Self {
             err_code: 2,
-            err_type: "没有相应权限".to_string(),
+            err_type: "没有对应权限".to_string(),
             err_message: err_message.to_string(),
             extra_field: None,
             internal_message: internal_message.to_string(),

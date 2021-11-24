@@ -1,46 +1,40 @@
+mod app;
+mod app_subscribe;
 mod article;
 mod email;
-mod game_article;
-mod mod_article;
-mod notification;
+mod notice;
 mod resource;
 mod tag;
-mod token;
 mod user;
 
 pub fn register(cfg: &mut actix_web::web::ServiceConfig) {
+    cfg.service(app::get_app);
+    cfg.service((
+        app_subscribe::get_app_subscribe_status,
+        app_subscribe::post_app_subscribe,
+        app_subscribe::post_app_unsubscribe,
+    ));
+    cfg.service((
+        article::get_article_covers,
+        article::get_article_amount,
+        article::get_article,
+    ));
     cfg.service((email::post_send_verify_email, email::post_send_email));
+    cfg.service((notice::get_notices, notice::get_notice, notice::post_notice));
+    cfg.service((
+        resource::get_brief_resources,
+        resource::get_resource,
+        resource::get_resource_url,
+    ));
+    cfg.service(tag::get_tags);
     cfg.service((
         user::get_user,
         user::get_myself,
+        user::post_user_login,
+        user::post_user_register,
+        user::post_user_new_token,
+        user::post_user_reset_password,
         user::post_user,
-        user::post_daily_bonus,
-    ));
-    cfg.service((
-        token::post_login,
-        token::post_register,
-        token::post_new_token,
-        token::post_reset_password,
-    ));
-    cfg.service((
-        article::get_article_subscribe_stataus,
-        article::post_article_subscribe,
-        article::post_article_unsubscribe,
-    ));
-    cfg.service((
-        game_article::get_game_article_covers,
-        game_article::get_game_article_size,
-        game_article::get_game_article,
-    ));
-    cfg.service((
-        mod_article::get_mod_article_covers,
-        mod_article::get_mod_article_size,
-        mod_article::get_mod_article,
-    ));
-    cfg.service((resource::get_resource, resource::get_resource_url));
-    cfg.service(tag::get_tags);
-    cfg.service((
-        notification::get_notification,
-        notification::post_notification,
+        user::post_user_daily_bonus,
     ));
 }
